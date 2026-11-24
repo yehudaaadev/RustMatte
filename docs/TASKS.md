@@ -25,8 +25,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Unit tests verify error formatting without panics. Verified.
 - [x] Phase 1C-1: Local model resolution and SHA-256 integrity verification in `crates/core::model`.
   - Acceptance criterion: Verifies SHA-256 checksum against pinned reference hash, rejects corrupt hash, and locates model in `./models/`. Verified.
-- [ ] Phase 1C-2: Implement automatic model downloader in `crates/core::model` (download, SHA-256 verification, local caching in OS app data).
-  - Acceptance criterion: Test verifies cache hit for existing valid model and rejects corrupt hash; no model bundling in repository.
+- [x] Phase 1C-2: Implement automatic model downloader in `crates/core::model` and `crates/core::download` (download, SHA-256 verification, local caching in OS app data, consent prompt, CLI `models` subcommand).
+  - Acceptance criterion: Test verifies cache hit for existing valid model, rejects corrupt hash, cleans up `.part` files on failure, enforces HTTPS (with localhost override for testing), and executes end-to-end mock and local server downloads; no model bundling in repository. Verified.
 - [x] Implement image pre-processing in `crates/core::pipeline` (aspect-ratio resize, normalization to tensor for standard formats: JPEG, PNG, WebP, BMP).
   - Acceptance criterion: Test validates normalized tensor output format; unsupported formats return typed error. Verified.
 - [x] Phase 1C: Implement image decoding with damage/truncation warning flag in `crates/core::decode`.

@@ -4,7 +4,7 @@
 
 All benchmarks and timings recorded in this report were measured directly on the local test machine under the following hardware and software configuration:
 
-- Operating System: Windows 10/11 Enterprise x64 (Build 19045 / 22631)
+- Operating System: Microsoft Windows 11 Pro 64-bit (Build 26200)
 - Processor (CPU): Intel Core i5-10400 CPU @ 2.90GHz (6 physical cores, 12 logical threads)
 - System Memory (RAM): 16.0 GB DDR4
 - Rust Toolchain: rustc 1.91.1 pinned via `rust-toolchain.toml`

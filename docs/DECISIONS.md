@@ -130,6 +130,13 @@ Format:
 - Reason: Balances commercial licensing safety, sub-4s latency on consumer CPUs, and crash-free memory consumption.
 - Alternatives considered: Single model BiRefNet 1024 (deferred due to memory exhaustion/crash), ISNet (dropped due to dataset non-commercial terms), U2Netp as only model (lacks micro-detail on hair).
 
+### D-019: Model Downloader, Cache Strategy, and Integrity Verification
+- Date: 2026-11-24
+- Decision: Implement download-on-first-run with user consent (`[y/N]` interactive prompt or `--yes`). Models are checked against a pinned manifest (`expected_size` and lowercase SHA-256). Stored in the OS local application data directory (`dirs::data_local_dir()`). Dual-source hosting plan: primary placeholder for project GitHub Release asset (`TODO(owner)`), fallback to upstream HuggingFace export. Pure-Rustls blocking HTTP client (`ureq = "=2.10.1"`). Downloads write to temporary `.part` files, streaming size caps prevent decompression/oversize attacks, and files are atomically renamed only after SHA-256 verification passes. HTTP chunk resume is deferred to the backlog.
+- Status: accepted
+- Reason: Keeps the v1.0 installer small without bundling hundreds of megabytes of model weights, guarantees privacy (zero network access outside explicit model download), and prevents corruption or tampering via cryptographic checksum verification.
+- Alternatives considered: Bundling models in installer (violates size goals), unverified dynamic URLs (security vulnerability), async runtime like Tokio/Reqwest (adds bloat and compile complexity for a one-time sequential task).
+
 ---
 
 ## Superseded Decisions

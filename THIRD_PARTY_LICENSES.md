@@ -13,6 +13,8 @@ Rule: Every external dependency (Rust crate, frontend package, tool) and every m
 | `anyhow` | crate | `1.0.105` | MIT OR Apache-2.0 | `https://crates.io/crates/anyhow` | Yes | Error handling for binaries and examples |
 | `sha2` | crate | `0.10.8` | MIT OR Apache-2.0 | `https://crates.io/crates/sha2` | Yes | SHA-256 verification of local model weights in core |
 | `clap` | crate | `4.5.31` | MIT OR Apache-2.0 | `https://crates.io/crates/clap` | Yes | Command-line argument parser with derive in CLI binary |
+| `ureq` | crate | `2.10.1` | MIT OR Apache-2.0 | `https://crates.io/crates/ureq` | Yes | Pure-Rustls blocking HTTP client for model downloading |
+| `dirs` | crate | `6.0.0` | MIT OR Apache-2.0 | `https://crates.io/crates/dirs` | Yes | Standard OS application data directory lookup |
 | `ONNX Runtime` | binary | `1.20+` | MIT | `https://github.com/microsoft/onnxruntime` | Yes | Official Microsoft ONNX Runtime C++ library |
 
 ## Model Weights and Dataset Provenance Audit

@@ -136,3 +136,27 @@ Format:
 - Symptom: Runtime error when creating multiple `Remover` instances in the same process or running tests concurrently: `InferenceSession("Failed to initialize ORT environment: only one environment is allowed per process")`.
 - Cause: ONNX Runtime C API enforces a strict single-environment per process constraint. Calling `ort::init().build()` multiple times within the same process lifecycle returns an error.
 - Fix or avoidance: Store the initialized `ort::environment::Environment` in a process-wide `std::sync::OnceLock<Arc<Environment>>` singleton, allowing all remover sessions to share the single environment safely.
+
+### P-022: Unguarded Platform-Specific FFI Linking Breaks Cross-Platform CI
+- Date: 2026-11-24
+- Symptom: GitHub Actions runner on Ubuntu and macOS fails during `cargo test --workspace` with linker errors: `rust-lld: error: unable to find library -lpsapi` and `ld: library 'psapi' not found`.
+- Cause: Examples in `crates/core/examples/` included `#[link(name = "psapi")]` without `#[cfg(windows)]`. Cargo compiles examples during `cargo test --workspace`, causing Unix linkers to search for the Windows-specific DLL.
+- Fix or avoidance: Always gate platform-specific FFI declarations and link directives behind `#[cfg(target_os = ...)]` or `#[cfg(windows)]`, and provide no-op fallbacks for other platforms.
+
+### P-023: `ureq` Version 2.x API Differences
+- Date: 2026-11-24
+- Symptom: Compilation error `no method named max_redirects found for struct AgentBuilder`.
+- Cause: `ureq` 3.x renamed several configuration methods, whereas pinned `ureq` 2.10.1 uses `.redirects(n)`.
+- Fix or avoidance: Check documentation for the exact pinned crate version (`docs.rs/ureq/2.10.1`) rather than assuming modern 3.x method signatures.
+
+### P-024: Cold-Start Model Session Initialization Latency
+- Date: 2026-11-24
+- Symptom: Single-image CLI invocation for `BiRefNet_lite_512` takes ~6.8 seconds total, despite inference taking only ~3.0 seconds in benchmarks.
+- Cause: Cold-start ONNX model parsing, node allocation, and graph initialization in `ort::session::Session` takes ~3.68 seconds on a 183 MB model on CPU.
+- Fix or avoidance: Verified via `--verbose` stage timing breakdown. This is normal for cold-start CLI commands. In Phase 2 (batch processing) and Phase 3 (GUI desktop app), the session is initialized once and reused across images, eliminating the 3.68s cold-start overhead on subsequent runs.
+
+### P-025: MSVC `link.exe` LNK1102 Out of Memory Under High Test Concurrency
+- Date: 2026-11-24
+- Symptom: Debug test suite compilation fails on Windows with `fatal error LNK1102: out of memory`.
+- Cause: When Cargo runs link steps across 12 logical cores simultaneously (`-j 12`), multiple instances of MSVC `link.exe` concurrently build debug test executables embedding symbols and object code from heavy dependencies (`ort`, `ring`, `icu_*`, `image`), exceeding available virtual memory.
+- Fix or avoidance: Throttle debug test linker concurrency with `cargo test --workspace -j 2` or link binaries sequentially. Release builds optimize symbols and do not encounter this memory limit.
