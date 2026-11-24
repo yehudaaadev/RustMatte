@@ -1,0 +1,38 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Node / Frontend build artifacts
+node_modules/
+dist/
+.svelte-kit/
+
+# Tauri build outputs
+src-tauri/target/
+
+# AI Model weights and caches (models are downloaded on demand, never committed to git)
+models/
+*.onnx
+*.onnx_data
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.engine
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace

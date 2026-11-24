@@ -1,0 +1,89 @@
+# RustMatte Tasks and Acceptance Criteria
+
+Rule: Only the owner approves moving to the next phase. Never mark a phase done without running verification commands.
+
+## Phase 0: Workspace Setup and Foundation
+- [x] Initialize Cargo workspace root `Cargo.toml` with `crates/core` and `crates/cli` members.
+  - Acceptance criterion: `cargo check --workspace` passes without errors. Verified.
+- [x] Create `rust-toolchain.toml` pinning Rust stable channel (1.98.1).
+  - Acceptance criterion: Toolchain adheres to pinned version. Verified.
+- [x] Create `LICENSE` file with official GPL-3.0 text fetched from gnu.org.
+  - Acceptance criterion: File exists and matches decision D-014. Verified.
+- [x] Create skeleton `README.md` with project description, build instructions, and trademark disclaimer.
+  - Acceptance criterion: README documents build and test procedures without unmeasured performance claims. Verified.
+- [x] Setup GitHub Actions CI workflow (`.github/workflows/ci.yml`) for Windows, macOS, and Linux.
+  - Acceptance criterion: Workflow YAML is valid (verified via python yaml parser) and defines build, test, clippy, and fmt checks across all three OS. UNVERIFIED in cloud until pushed.
+- [x] Record project license decision (GPL-3.0-or-later) and decisions in `docs/DECISIONS.md`.
+  - Acceptance criterion: Entry exists and is approved by owner. Verified.
+- [x] Verify clean workspace build.
+  - Acceptance criterion: `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --all -- --check` all exit with code 0. Verified.
+
+## Phase 1: Core Engine and CLI (v0.1)
+- [ ] Define error types in `crates/core::error` using `thiserror`.
+  - Acceptance criterion: Unit tests verify error formatting without panics.
+- [ ] Implement model manager in `crates/core::model` (download, SHA-256 verification, local caching in OS app data).
+  - Acceptance criterion: Test verifies cache hit for existing valid model and rejects corrupt hash; no model bundling in repository.
+- [ ] Implement image pre-processing in `crates/core::image_ops` (aspect-ratio resize, normalization to tensor for standard formats: JPEG, PNG, WebP, BMP).
+  - Acceptance criterion: Test validates normalized tensor output format; unsupported formats return typed error.
+- [ ] Implement ONNX inference session in `crates/core::pipeline` using pinned `ort` on CPU by default.
+  - Acceptance criterion: Inference runs against real model on CPU and produces raw probability mask output.
+- [ ] Benchmark candidate models (`BiRefNet_lite` vs `ISNet`) on CPU using `tests/fixtures`.
+  - Acceptance criterion: Real CPU timings, memory consumption, supply-chain verification (source URL, license, SHA-256, operator compatibility in `ort`), and visual quality notes reported to owner for model selection.
+- [ ] Implement post-processing in `crates/core::image_ops` (upscale mask, guided-filter refinement, feathering in transition zone, defringing, alpha blending).
+  - Acceptance criterion: Generates valid 32-bit RGBA image matching source dimensions.
+- [ ] Implement CLI single-image command in `crates/cli` (`rustmatte input.jpg -o output.png`).
+  - Acceptance criterion: Running CLI on sample image creates valid transparent PNG with network disconnected after model cache.
+- [ ] Test CLI across varied sample images.
+  - Acceptance criterion: Diverse sample images processed with acceptable transparent cutout quality.
+
+## Phase 2: Batch Processing, Formats, and Performance (v0.2)
+- [ ] Implement folder processing with `rayon` and bounded concurrency (1-2 full-resolution images in RAM).
+  - Acceptance criterion: Folder of sample images processes without crash; memory deallocated immediately per image.
+- [ ] Implement per-file error handling in batch processing.
+  - Acceptance criterion: Corrupt file in batch logs friendly error and does not stop remaining files.
+- [ ] Implement optional execution provider selection (DirectML on Windows, CoreML on macOS) with automatic CPU fallback.
+  - Acceptance criterion: Logs confirm execution provider selection; fallback to CPU executes gracefully if GPU unavailable.
+- [ ] Implement fast mode option (early downscaling of very large images to conserve decode time and RAM).
+  - Acceptance criterion: Large image processes with reduced decode overhead; document that model inference time is unchanged.
+
+## Phase 3: Desktop UI with Tauri 2 (v0.3)
+- [ ] Scaffold Tauri 2 application in `crates/app` with frontend (Svelte + TypeScript).
+  - Acceptance criterion: Application window launches with drag-and-drop zone and queue.
+- [ ] Implement before/after comparison slider with zoom and pan.
+  - Acceptance criterion: Slider interactively reveals original vs transparent output.
+- [ ] Implement output settings (background color picker, format, fast mode toggle, export directory).
+  - Acceptance criterion: Saving exports file according to selected settings.
+- [ ] Implement bilingual support (English and Indonesian) and light/dark theme.
+  - Acceptance criterion: Toggling language and theme updates all UI text instantly.
+- [ ] Configure Windows installer with WebView2 bootstrapper.
+  - Acceptance criterion: Installer builds and runs cleanly on Windows.
+
+## Phase 4: Release Packaging and Multi-OS Distribution (v1.0)
+- [ ] Configure GitHub Actions release matrix for Windows (.msi, .exe), macOS (.dmg), and Linux (.AppImage, .deb).
+  - Acceptance criterion: CI builds release artifacts across all three platforms on git tag; macOS and Linux labeled experimental.
+- [ ] Complete documentation: README, CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue templates.
+  - Acceptance criterion: All documentation files present and reviewed.
+- [ ] Perform full license audit in `THIRD_PARTY_LICENSES.md`.
+  - Acceptance criterion: Every dependency and model weight file documented and verified.
+- [ ] Test release installers on clean Windows machines without developer tools.
+  - Acceptance criterion: Windows installer runs correctly offline.
+
+---
+
+## Backlog (v1.1, v1.x, v2.0, v3.0)
+
+### v1.1 Scope
+- [ ] Camera RAW format support (.CR2, .NEF, .ARW, .DNG): Phase 1 extracts embedded JPEG preview; Phase 2 implements full RAW demosaic.
+- [ ] Apple HEIC/HEIF decoding support with cross-platform build validation.
+
+### v1.x Scope
+- [ ] Standalone photo compression utility.
+- [ ] Manual refine brush (restore/erase on mask).
+- [ ] Preset dimensions for marketplace and passport photos.
+
+### v2.0 Scope
+- [ ] Real-ESRGAN ONNX upscaler with image tiling and memory cap.
+- [ ] Web browser version (WASM / PWA) for local offline mobile and tablet processing.
+
+### v3.0 Scope
+- [ ] Android version (after desktop application is complete and stabilized).
