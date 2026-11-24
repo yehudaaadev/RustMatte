@@ -7,7 +7,7 @@ All benchmarks and timings recorded in this report were measured directly on the
 - Operating System: Microsoft Windows 11 Pro 64-bit (Build 26200)
 - Processor (CPU): Intel Core i5-10400 CPU @ 2.90GHz (6 physical cores, 12 logical threads)
 - System Memory (RAM): 16.0 GB DDR4
-- Rust Toolchain: rustc 1.91.1 pinned via `rust-toolchain.toml`
+- Rust Toolchain: rustc 1.98.1 pinned via `rust-toolchain.toml`
 - Compilation Profile: `--release` (`[optimized]`, opt-level = 3)
 - ONNX Runtime: `ort` v2.0.0-rc.15 (CPU Execution Provider, precompiled dynamic library)
 

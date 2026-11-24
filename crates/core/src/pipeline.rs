@@ -7,6 +7,26 @@ use ndarray::Array4;
 use crate::error::CoreError;
 use crate::model::{ModelKind, ModelSpec};
 
+/// Downscales an image early if its longest dimension exceeds `max_side`, preserving aspect ratio.
+///
+/// If `max_side` is `None` or 0, or if both dimensions are already <= `max_side`, the image is returned unchanged.
+#[must_use]
+pub fn downscale_if_needed(img: DynamicImage, max_side: Option<u32>) -> DynamicImage {
+    if let Some(max) = max_side {
+        if max > 0 {
+            let (w, h) = img.dimensions();
+            let longest = w.max(h);
+            if longest > max {
+                let scale = max as f64 / longest as f64;
+                let new_w = ((w as f64 * scale).round() as u32).max(1);
+                let new_h = ((h as f64 * scale).round() as u32).max(1);
+                return img.resize_exact(new_w, new_h, FilterType::Triangle);
+            }
+        }
+    }
+    img
+}
+
 /// Preprocesses a dynamic image into a normalized NCHW floating-point tensor array.
 ///
 /// Converts to RGB8, resizes to the model's exact target dimensions with triangle interpolation,
@@ -121,4 +141,34 @@ pub fn apply_mask(orig: &DynamicImage, mask: &GrayImage) -> RgbaImage {
     }
 
     cutout
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::Rgba;
+
+    #[test]
+    fn test_downscale_if_needed() {
+        let img =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2000, 1000, Rgba([255, 0, 0, 255])));
+
+        // None keeps original
+        let res = downscale_if_needed(img.clone(), None);
+        assert_eq!(res.dimensions(), (2000, 1000));
+
+        // Larger max_side keeps original
+        let res = downscale_if_needed(img.clone(), Some(3000));
+        assert_eq!(res.dimensions(), (2000, 1000));
+
+        // Downscale landscape
+        let res = downscale_if_needed(img.clone(), Some(1000));
+        assert_eq!(res.dimensions(), (1000, 500));
+
+        // Downscale portrait
+        let portrait =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(800, 1600, Rgba([0, 255, 0, 255])));
+        let res = downscale_if_needed(portrait, Some(800));
+        assert_eq!(res.dimensions(), (400, 800));
+    }
 }

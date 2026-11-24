@@ -1,6 +1,6 @@
 # RustMatte Architecture Map
 
-Status: Planned (No implementation code exists yet). Derived strictly from `docs/PRD.md` Sections 5, 6, 14, and Owner Corrections.
+Status: Implemented through Phase 1D-1 (Core Pipeline, Model Downloader, Batch Processing, and Release Workflow). Derived strictly from `docs/PRD.md` Sections 5, 6, 14, and Owner Decisions.
 
 ## Workspace Layout
 ```text
@@ -31,9 +31,10 @@ Core background removal engine library. Contains no UI code and performs zero te
 - `src/pipeline.rs`: Preprocessing (RGB triangle resize and NCHW tensor normalization), postprocessing (raw logits sigmoid/min-max to 8-bit mask and bilinear upscaling), `refine_mask` hook for Phase 1D, and `apply_mask` alpha blending.
 - `src/lib.rs`: Minimal public API (`Config`, `Output`, `StageTimings`, `Remover::new`, `Remover::process`, `download_model`). Manages global ORT environment safely across instances via `std::sync::OnceLock`.
 
-### `crates/cli` (Implemented in Phase 1C-1 and Phase 1C-2)
+### `crates/cli` (Implemented through Phase 1D-1)
 Lightweight command-line interface binary using `clap` (derive). Thin wrapper around `crates/core`.
-- `src/main.rs`: Argument parsing (`rustmatte <INPUT> -o <OUTPUT> [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite] [--yes] [--no-download] [--verbose]`), prefetch subcommand (`rustmatte models [list|download]`), interactive download disclosure/consent (`[y/N]`), atomic file creation via temp files, warning output to stderr, and `--verbose` per-stage execution timing breakdown.
+- `src/main.rs`: Argument parsing (`rustmatte <INPUT> [-o <OUTPUT>] [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite] [--skip-existing] [--max-side N] [--recursive] [--yes] [--no-download] [--verbose]`), prefetch subcommand (`rustmatte models [list|download]`), interactive download disclosure/consent (`[y/N]`), atomic file creation via temp files, warning output to stderr, and `--verbose` per-stage execution timing breakdown. Returns exit codes: `0` (all ok), `1` (total failure / bad args), `2` (partial failure).
+- `src/batch.rs`: Batch image discovery, recursive directory traversal with symlink traversal boundaries, batch limit warnings (>1,000 files), and deterministic collision resolution (conflicting files with identical stems in the same folder resolve to `<stem>_<ext>.png`).
 
 ### `crates/app` (Planned for Phase 3)
 Desktop application using Tauri 2 with a web frontend (Svelte/TypeScript). Thin wrapper around `crates/core`.
@@ -57,7 +58,10 @@ WebAssembly and PWA implementation for browser-based offline processing.
 8. Apply mask as alpha channel, export transparent 32-bit PNG at specified resolution.
 
 ## Concurrency & Memory Guardrails
-- Bounded batch queue: only 1-2 full-resolution images decoded simultaneously in RAM.
+- Strictly sequential batch processing (D-020): Single shared ORT session (`Remover`) initialized once for the run.
+- Zero parallel image queues: Exactly one full-resolution image decoded in RAM at a time. Each buffer is processed, written, and immediately dropped before decoding the next image.
+- Memory profile remains flat and constant across arbitrarily large batches (empirically verified: ~313 MB flat on Fast tier, ~1,915 MB flat on Quality tier across 100 images).
+- Early downscaling (`--max-side <N>`): Resizes input image immediately after decode if dimensions exceed N, bounding peak memory and cutting postprocessing time by up to 98% on 24MP images.
 - Immediate deallocation: raw image buffers dropped immediately after saving to disk.
 
 ## Model Storage and Download Flow

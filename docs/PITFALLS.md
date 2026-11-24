@@ -160,3 +160,9 @@ Format:
 - Symptom: Debug test suite compilation fails on Windows with `fatal error LNK1102: out of memory`.
 - Cause: When Cargo runs link steps across 12 logical cores simultaneously (`-j 12`), multiple instances of MSVC `link.exe` concurrently build debug test executables embedding symbols and object code from heavy dependencies (`ort`, `ring`, `icu_*`, `image`), exceeding available virtual memory.
 - Fix or avoidance: Throttle debug test linker concurrency with `cargo test --workspace -j 2` or link binaries sequentially. Release builds optimize symbols and do not encounter this memory limit.
+
+### P-026: Synchronous Child Process Pipe Buffer Deadlock
+- Date: 2026-11-24
+- Symptom: Child process hangs indefinitely after processing ~90 images during long-running batch CLI runs with redirected stdout/stderr.
+- Cause: Operating system standard error/output pipes have a fixed 4KB buffer. If the child process writes verbose output that exceeds 4KB while the parent process synchronously polls `HasExited` without reading the stream asynchronously, the child blocks on `write()` / `eprintln!`.
+- Fix or avoidance: Always redirect child process stdout/stderr to disk files (`cmd.exe /c ... > stdout.log 2> stderr.log`) or use asynchronous event handlers (`BeginOutputReadLine`, `BeginErrorReadLine`) when monitoring processes that generate large output streams.

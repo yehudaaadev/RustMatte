@@ -137,6 +137,13 @@ Format:
 - Reason: Keeps the v1.0 installer small without bundling hundreds of megabytes of model weights, guarantees privacy (zero network access outside explicit model download), and prevents corruption or tampering via cryptographic checksum verification.
 - Alternatives considered: Bundling models in installer (violates size goals), unverified dynamic URLs (security vulnerability), async runtime like Tokio/Reqwest (adds bloat and compile complexity for a one-time sequential task).
 
+### D-020: Batch Processing Architecture, Deterministic Collision Handling, and Memory Bounding
+- Date: 2026-11-24
+- Decision: Batch folder processing runs strictly sequentially using a single shared ORT session (`Remover`) initialized once. Do not use Rayon or multi-image concurrent thread pools. Peak working set is strictly bounded to exactly 1 full-resolution image in RAM at any given time by immediately dropping and flushing image buffers after writing to disk. Output collision handling resolves deterministically using `<stem>_<ext>.png` when stems conflict within the same directory. Tri-state exit codes: `0` (all ok/skipped), `1` (total failure / bad args), `2` (partial failure).
+- Status: accepted
+- Reason: Prevents CPU cache thrashing and memory spikes that occur when running multiple high-resolution neural network inferences concurrently on consumer hardware. Guarantees flat, leak-free memory usage across 100+ images while ensuring deterministic, zero-data-loss output naming.
+- Alternatives considered: Threadpool/Rayon parallel image queue (exhausts RAM on large images, high contention on ORT intra-op threads), overwriting on collision (data loss risk).
+
 ---
 
 ## Superseded Decisions

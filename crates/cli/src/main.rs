@@ -1,5 +1,7 @@
 //! RustMatte CLI - Command line interface for offline background removal.
 
+mod batch;
+
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -12,7 +14,7 @@ use rustmatte_core::model::{
 };
 use rustmatte_core::session::default_thread_count;
 use rustmatte_core::{
-    download_model, extract_source_host, Config, ModelTier, Remover, StageTimings,
+    download_model, extract_source_host, Config, ModelTier, Remover, RgbaImage, StageTimings,
 };
 
 /// Model processing tier for CLI selection.
@@ -44,13 +46,25 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Input image path (JPEG, PNG, WebP, BMP)
+    /// Input image file or directory containing images (JPEG, PNG, WebP, BMP)
     #[arg(value_name = "INPUT")]
     input: Option<PathBuf>,
 
-    /// Output transparent image path (PNG)
-    #[arg(short = 'o', long = "output")]
+    /// Output destination: transparent PNG path for file input, or directory for batch input (alias: --out)
+    #[arg(short = 'o', long = "output", alias = "out")]
     output: Option<PathBuf>,
+
+    /// Recursively scan subdirectories for images when processing a directory (default: off)
+    #[arg(short = 'r', long = "recursive")]
+    recursive: bool,
+
+    /// Skip processing if the target output file already exists (batch mode)
+    #[arg(long = "skip-existing")]
+    skip_existing: bool,
+
+    /// Downscale image so that its longest side is at most N pixels, preserving aspect ratio (default: off)
+    #[arg(long = "max-side")]
+    max_side: Option<u32>,
 
     /// Model tier: quality (default) or fast (best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds)
     #[arg(short = 't', long = "tier", default_value = "quality")]
@@ -103,99 +117,114 @@ enum ModelsAction {
         #[arg(short = 't', long = "tier", default_value = "quality")]
         tier: CliTier,
 
-        /// Automatically confirm model download without interactive prompt
+        /// Automatically confirm download without interactive prompt
         #[arg(short = 'y', long = "yes")]
         yes: bool,
     },
 }
 
-fn print_progress(downloaded: u64, total: u64) {
-    let pct = if total > 0 {
-        (downloaded as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
-    let downloaded_mb = downloaded as f64 / (1024.0 * 1024.0);
-    let total_mb = total as f64 / (1024.0 * 1024.0);
-    eprint!("\rDownloading model: {downloaded_mb:.1} / {total_mb:.1} MB ({pct:.1}%)");
-    let _ = std::io::stderr().flush();
+fn prompt_user_consent(spec: &ModelSpec) -> Result<bool, String> {
+    let size_mb = spec.expected_size as f64 / (1024.0 * 1024.0);
+    let host = spec
+        .source_urls
+        .first()
+        .map(|u| extract_source_host(u))
+        .unwrap_or_else(|| "unknown host".to_string());
+
+    eprintln!("\nRustMatte Offline AI Model Downloader");
+    eprintln!("--------------------------------------");
+    eprintln!("File:    {}", spec.default_filename);
+    eprintln!("Size:    {size_mb:.1} MB");
+    eprintln!("Source:  {host}");
+    eprintln!("License: {}", spec.license);
+    eprintln!();
+    eprintln!("This is a one-time network download to obtain the model weights.");
+    eprintln!("Once downloaded, all background removal operations run completely offline.");
+    eprintln!("No user data, images, or telemetry will ever be transmitted.");
+    eprint!("\nDownload now? [y/N]: ");
+    std::io::stderr()
+        .flush()
+        .map_err(|e| format!("IO error: {e}"))?;
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| format!("Failed to read user input: {e}"))?;
+
+    let trimmed = input.trim().to_ascii_lowercase();
+    Ok(trimmed == "y" || trimmed == "yes")
 }
 
 fn ensure_model_available(
-    spec: &ModelSpec,
+    spec: &'static ModelSpec,
     custom_path: Option<&Path>,
-    yes: bool,
+    auto_confirm: bool,
     no_download: bool,
 ) -> Result<PathBuf, String> {
-    match check_model_status_with_custom(custom_path, spec.tier) {
+    let status = check_model_status_with_custom(custom_path, spec.tier);
+
+    match status {
         ModelStatus::Verified { path } => Ok(path),
         ModelStatus::Corrupt {
             path,
             expected,
             actual,
         } => Err(format!(
-            "Model file at '{}' is corrupt. Expected SHA-256 '{expected}', found '{actual}'",
+            "Model file '{}' is corrupt (checksum mismatch).\nExpected: {expected}\nActual:   {actual}\nPlease remove it or run 'rustmatte models download' to re-fetch a valid copy.",
             path.display()
         )),
         ModelStatus::Missing {
-            expected_cache_path,
+            expected_cache_path: _,
         } => {
             if no_download {
                 return Err(format!(
-                    "Model '{}' is not present locally and network downloads are disabled by '--no-download'. Place '{}' in '{}' or pass '--model-path'.",
-                    spec.id,
+                    "Model file '{}' not found and '--no-download' was specified.\nDownload it manually or run 'rustmatte models download --tier {}' without '--no-download'.",
                     spec.default_filename,
-                    expected_cache_path.display()
+                    match spec.tier {
+                        ModelTier::Quality => "quality",
+                        ModelTier::Fast => "fast",
+                    }
                 ));
             }
 
-            let size_mb = spec.expected_size as f64 / (1024.0 * 1024.0);
-            let first_url = spec
-                .source_urls
-                .iter()
-                .find(|u| !u.starts_with("TODO"))
-                .copied()
-                .unwrap_or("unknown");
-            let host = extract_source_host(first_url);
-
-            if !yes {
+            if !auto_confirm {
                 if !std::io::stdin().is_terminal() {
                     return Err(format!(
-                        "Model '{}' needs to be downloaded ({size_mb:.1} MB from {host}, license {}).\nRun with '--yes' to confirm download, or run 'rustmatte models download', or place '{}' in '{}'.",
-                        spec.id,
-                        spec.license,
-                        spec.default_filename,
-                        expected_cache_path.display()
+                        "Model file '{}' is not present in local storage.\nInteractive confirmation is required. Pass '--yes' / '-y' to allow automatic download, or run 'rustmatte models download'.",
+                        spec.default_filename
                     ));
                 }
 
-                eprintln!("RustMatte needs to download model weights on first run:");
-                eprintln!("  Model:   {}", spec.name);
-                eprintln!("  File:    {}", spec.default_filename);
-                eprintln!("  Size:    {size_mb:.1} MB");
-                eprintln!("  License: {}", spec.license);
-                eprintln!("  Source:  {host}");
-                eprintln!("  Cache:   {}", expected_cache_path.display());
-                eprint!("Proceed with download? [y/N]: ");
-                let _ = std::io::stderr().flush();
-
-                let mut input = String::new();
-                std::io::stdin()
-                    .read_line(&mut input)
-                    .map_err(|e| format!("Failed to read user input: {e}"))?;
-                let trimmed = input.trim();
-                if !trimmed.eq_ignore_ascii_case("y") && !trimmed.eq_ignore_ascii_case("yes") {
-                    return Err("Download cancelled by user. Model was not downloaded.".to_string());
+                let confirmed = prompt_user_consent(spec)?;
+                if !confirmed {
+                    return Err("Model download declined by user. Aborting.".to_string());
                 }
             }
 
-            eprintln!("Starting model download...");
             let cache_dir = default_cache_dir();
-            let downloaded_path =
-                download_model(spec, &cache_dir, print_progress).map_err(|e| {
-                    eprintln!();
-                    format!("Model download failed: {e}")
-                })?;
+            eprintln!("Starting model download...");
+
+            let mut last_reported_pct: i32 = -1;
+            let downloaded_path = download_model(spec, &cache_dir, |downloaded, total| {
+                let pct = if total > 0 {
+                    (downloaded as f64 / total as f64 * 100.0) as i32
+                } else {
+                    0
+                };
+
+                if pct != last_reported_pct {
+                    last_reported_pct = pct;
+                    let down_mb = downloaded as f64 / (1024.0 * 1024.0);
+                    let total_mb = total as f64 / (1024.0 * 1024.0);
+                    eprint!(
+                        "\rDownloading model: {down_mb:.1} / {total_mb:.1} MB ({pct:.1}%)",
+                        pct = pct as f64
+                    );
+                    let _ = std::io::stderr().flush();
+                }
+            })
+            .map_err(|e| format!("Download failed: {e}"))?;
+
             eprintln!(
                 "\nModel verified and cached at: {}",
                 downloaded_path.display()
@@ -257,73 +286,17 @@ fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
     }
 }
 
-fn run_cli(cli: Cli) -> Result<(), String> {
-    // 1. Handle subcommands if provided
-    if let Some(Commands::Models(models_args)) = cli.command {
-        return handle_models_command(models_args);
+fn is_same_file(path_a: &Path, path_b: &Path) -> bool {
+    if path_a == path_b {
+        return true;
     }
-
-    // 2. Positional input check
-    let input = match cli.input {
-        Some(p) => p,
-        None => {
-            return Err(
-                "Missing required argument <INPUT>. Run 'rustmatte --help' for usage instructions."
-                    .to_string(),
-            );
-        }
-    };
-
-    let output_path = match cli.output {
-        Some(p) => p,
-        None => {
-            return Err("Missing required option '-o, --output <OUTPUT>'. Run 'rustmatte --help' for usage instructions.".to_string());
-        }
-    };
-
-    // 3. Verify input existence
-    if !input.exists() {
-        return Err(format!("Input file '{}' does not exist", input.display()));
+    match (path_a.canonicalize(), path_b.canonicalize()) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
     }
+}
 
-    // 4. Guard against unwanted file overwrites
-    if output_path.exists() && !cli.overwrite {
-        return Err(format!(
-            "Output file '{}' already exists. Pass '--overwrite' to allow replacing it.",
-            output_path.display()
-        ));
-    }
-
-    // 5. Ensure model is available (resolve / download with consent)
-    let tier: ModelTier = cli.tier.into();
-    let spec = spec_for_tier(tier);
-    let resolved_model_path =
-        ensure_model_available(spec, cli.model_path.as_deref(), cli.yes, cli.no_download)?;
-
-    // 6. Configure core engine
-    let thread_count = cli.threads.unwrap_or_else(default_thread_count);
-    let config = Config {
-        tier,
-        model_path: Some(resolved_model_path),
-        threads: thread_count,
-    };
-
-    let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
-
-    // 7. Process image
-    let output = remover.process(&input).map_err(|e| e.to_string())?;
-
-    // 8. Emit non-fatal warnings to stderr
-    for warning in output.warnings {
-        match warning {
-            Warning::DamagedInput(msg) => {
-                eprintln!("Warning: {msg}");
-            }
-        }
-    }
-
-    // 9. Atomically save output image
-    let t_write = Instant::now();
+fn save_image_atomic(image: &RgbaImage, output_path: &Path, overwrite: bool) -> Result<(), String> {
     let output_dir = output_path.parent().unwrap_or_else(|| Path::new("."));
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir).map_err(|e| {
@@ -341,27 +314,70 @@ fn run_cli(cli: Cli) -> Result<(), String> {
     let pid = std::process::id();
     let temp_path = output_dir.join(format!(".{file_stem}.tmp.{pid}.png"));
 
-    // Save to temp file
-    output
-        .image
+    image
         .save(&temp_path)
         .map_err(|e| format!("Failed to encode output PNG to temporary file: {e}"))?;
 
-    // On Windows, rename fails if target exists even when overwriting, so remove target first
-    if cli.overwrite && output_path.exists() {
-        let _ = std::fs::remove_file(&output_path);
+    if overwrite && output_path.exists() {
+        let _ = std::fs::remove_file(output_path);
     }
 
-    std::fs::rename(&temp_path, &output_path).map_err(|e| {
+    std::fs::rename(&temp_path, output_path).map_err(|e| {
         let _ = std::fs::remove_file(&temp_path);
         format!(
             "Failed to finalize output file '{}': {e}",
             output_path.display()
         )
     })?;
+
+    Ok(())
+}
+
+fn run_single(cli: &Cli, input_path: &Path, output_path: &Path) -> Result<(), String> {
+    if is_same_file(input_path, output_path) {
+        return Err(format!(
+            "Output path '{}' cannot be identical to input file.",
+            output_path.display()
+        ));
+    }
+
+    if output_path.exists() && !cli.overwrite {
+        return Err(format!(
+            "Output file '{}' already exists. Pass '--overwrite' to allow replacing it.",
+            output_path.display()
+        ));
+    }
+
+    let tier: ModelTier = cli.tier.into();
+    let spec = spec_for_tier(tier);
+    let resolved_model_path =
+        ensure_model_available(spec, cli.model_path.as_deref(), cli.yes, cli.no_download)?;
+
+    let thread_count = cli.threads.unwrap_or_else(default_thread_count);
+    let config = Config {
+        tier,
+        model_path: Some(resolved_model_path),
+        threads: thread_count,
+    };
+
+    let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
+
+    let output = remover
+        .process_with_options(input_path, cli.max_side)
+        .map_err(|e| e.to_string())?;
+
+    for warning in &output.warnings {
+        match warning {
+            Warning::DamagedInput(msg) => {
+                eprintln!("Warning: {msg}");
+            }
+        }
+    }
+
+    let t_write = Instant::now();
+    save_image_atomic(&output.image, output_path, cli.overwrite)?;
     let write_ms = t_write.elapsed().as_secs_f64() * 1000.0;
 
-    // 10. Timing breakdown if --verbose is active
     if cli.verbose {
         let StageTimings {
             model_load_ms,
@@ -388,11 +404,192 @@ fn run_cli(cli: Cli) -> Result<(), String> {
     Ok(())
 }
 
+fn run_batch(cli: &Cli, input_dir: &Path, output_dir: &Path) -> Result<ExitCode, String> {
+    let (jobs, discovery_warnings) =
+        batch::discover_batch_jobs(input_dir, output_dir, cli.recursive)?;
+
+    for warning in discovery_warnings {
+        eprintln!("Warning: {warning}");
+    }
+
+    let total = jobs.len();
+    if total == 0 {
+        return Err(format!(
+            "No supported image files found in '{}'",
+            input_dir.display()
+        ));
+    }
+
+    let tier: ModelTier = cli.tier.into();
+    let spec = spec_for_tier(tier);
+    let resolved_model_path =
+        ensure_model_available(spec, cli.model_path.as_deref(), cli.yes, cli.no_download)?;
+
+    let thread_count = cli.threads.unwrap_or_else(default_thread_count);
+    let config = Config {
+        tier,
+        model_path: Some(resolved_model_path),
+        threads: thread_count,
+    };
+
+    let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
+
+    let mut processed: usize = 0;
+    let mut skipped: usize = 0;
+    let mut failed: usize = 0;
+    let mut total_warnings: usize = 0;
+    let mut total_image_duration = std::time::Duration::ZERO;
+    let batch_start = Instant::now();
+
+    for (idx, job) in jobs.iter().enumerate() {
+        let step = idx + 1;
+
+        if is_same_file(&job.input_path, &job.output_path) {
+            eprintln!(
+                "[{step}/{total}] {}: failed (refusing to write output on top of input file)",
+                job.display_name
+            );
+            failed += 1;
+            continue;
+        }
+
+        if job.output_path.exists() {
+            if cli.skip_existing {
+                eprintln!(
+                    "[{step}/{total}] {}: skipped (already exists)",
+                    job.display_name
+                );
+                skipped += 1;
+                continue;
+            }
+            if !cli.overwrite {
+                eprintln!(
+                    "[{step}/{total}] {}: failed (destination exists, use --overwrite or --skip-existing)",
+                    job.display_name
+                );
+                failed += 1;
+                continue;
+            }
+        }
+
+        let t_img = Instant::now();
+        match remover.process_with_options(&job.input_path, cli.max_side) {
+            Ok(output) => {
+                if let Err(e) = save_image_atomic(&output.image, &job.output_path, cli.overwrite) {
+                    eprintln!(
+                        "[{step}/{total}] {}: failed (save error: {e})",
+                        job.display_name
+                    );
+                    failed += 1;
+                    continue;
+                }
+
+                let elapsed = t_img.elapsed();
+                let elapsed_ms = elapsed.as_millis();
+                total_image_duration += elapsed;
+                processed += 1;
+
+                let warn_count = output.warnings.len();
+                total_warnings += warn_count;
+
+                if warn_count > 0 {
+                    let warn_msgs: Vec<String> = output
+                        .warnings
+                        .into_iter()
+                        .map(|w| match w {
+                            Warning::DamagedInput(m) => m,
+                        })
+                        .collect();
+                    eprintln!(
+                        "[{step}/{total}] {}: ok with warning ({}) ({}ms)",
+                        job.display_name,
+                        warn_msgs.join("; "),
+                        elapsed_ms
+                    );
+                } else {
+                    eprintln!(
+                        "[{step}/{total}] {}: ok ({}ms)",
+                        job.display_name, elapsed_ms
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[{step}/{total}] {}: failed ({e})", job.display_name);
+                failed += 1;
+            }
+        }
+    }
+
+    let total_batch_secs = batch_start.elapsed().as_secs_f64();
+    let avg_ms = if processed > 0 {
+        (total_image_duration.as_secs_f64() * 1000.0) / (processed as f64)
+    } else {
+        0.0
+    };
+
+    eprintln!("\nBatch Summary:");
+    eprintln!("  Processed:    {processed}");
+    eprintln!("  Skipped:      {skipped}");
+    eprintln!("  Failed:       {failed}");
+    eprintln!("  Warnings:     {total_warnings}");
+    eprintln!("  Total time:   {total_batch_secs:.2}s");
+    eprintln!("  Average time: {avg_ms:.1}ms / image (excluding model load)");
+
+    if failed > 0 && (processed > 0 || skipped > 0) {
+        Ok(ExitCode::from(2))
+    } else if failed > 0 && processed == 0 && skipped == 0 {
+        Ok(ExitCode::from(1))
+    } else {
+        Ok(ExitCode::SUCCESS)
+    }
+}
+
+fn run_app(cli: Cli) -> Result<ExitCode, String> {
+    if let Some(Commands::Models(models_args)) = cli.command {
+        handle_models_command(models_args)?;
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    let input = match &cli.input {
+        Some(p) => p,
+        None => {
+            return Err(
+                "Missing required argument <INPUT>. Run 'rustmatte --help' for usage instructions."
+                    .to_string(),
+            );
+        }
+    };
+
+    if !input.exists() {
+        return Err(format!("Input path '{}' does not exist", input.display()));
+    }
+
+    if input.is_dir() {
+        let output_dir = cli
+            .output
+            .clone()
+            .unwrap_or_else(|| batch::default_batch_output_dir(input));
+        run_batch(&cli, input, &output_dir)
+    } else {
+        let output_path = match &cli.output {
+            Some(p) => p.clone(),
+            None => {
+                return Err(
+                    "Missing required option '-o, --output <OUTPUT>' for single file input. Run 'rustmatte --help' for usage instructions."
+                        .to_string(),
+                );
+            }
+        };
+        run_single(&cli, input, &output_path)?;
+        Ok(ExitCode::SUCCESS)
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    match run_cli(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+    match run_app(cli) {
+        Ok(code) => code,
         Err(err) => {
             eprintln!("Error: {err}");
             ExitCode::from(1)

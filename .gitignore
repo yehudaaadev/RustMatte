@@ -12,6 +12,8 @@ src-tauri/target/
 # Benchmark and output artifacts
 bench/
 bench/out/
+rustmatte-output/
+*rustmatte-output*/
 
 # AI Model weights and caches (models are downloaded on demand, never committed to git)
 models/

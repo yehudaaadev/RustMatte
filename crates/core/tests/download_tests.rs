@@ -26,9 +26,9 @@ fn test_manifest_specifications() {
         assert!(!spec.license.is_empty());
         assert!(!spec.source_urls.is_empty());
 
-        // First URL is always the release asset placeholder
-        assert!(spec.source_urls[0].starts_with("TODO"));
-        // Second URL is the official upstream HTTPS source
+        // First URL is the primary GitHub Release asset
+        assert!(spec.source_urls[0].starts_with("https://github.com/"));
+        // Second URL is the official upstream HTTPS fallback source
         assert!(spec.source_urls[1].starts_with("https://"));
     }
 

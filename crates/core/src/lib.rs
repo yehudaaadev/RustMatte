@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use image::{DynamicImage, GenericImageView, GrayImage, RgbaImage};
+pub use image::{DynamicImage, GenericImageView, GrayImage, RgbaImage};
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -123,15 +123,27 @@ impl Remover {
         })
     }
 
-    /// Processes an image from a file path, returning the transparent cutout, warnings, and timings.
-    pub fn process(&mut self, path: &Path) -> Result<Output, CoreError> {
+    /// Processes an image from a file path with optional early downscaling, returning the transparent cutout, warnings, and timings.
+    pub fn process_with_options(
+        &mut self,
+        path: &Path,
+        max_side: Option<u32>,
+    ) -> Result<Output, CoreError> {
         let t_decode = Instant::now();
-        let (img, warnings) = decode::decode_image(path)?;
+        let (mut img, warnings) = decode::decode_image(path)?;
+        if let Some(max) = max_side {
+            img = pipeline::downscale_if_needed(img, Some(max));
+        }
         let decode_ms = t_decode.elapsed().as_secs_f64() * 1000.0;
 
         let mut output = self.process_image(&img, warnings)?;
         output.timings.decode_ms = decode_ms;
         Ok(output)
+    }
+
+    /// Processes an image from a file path, returning the transparent cutout, warnings, and timings.
+    pub fn process(&mut self, path: &Path) -> Result<Output, CoreError> {
+        self.process_with_options(path, None)
     }
 
     /// Processes an in-memory dynamic image, applying preprocessing, inference, and mask blending.

@@ -16,13 +16,18 @@ cargo build --workspace
 ```
 
 ## Running the Quality Gate
-Before submitting any pull request or declaring a task complete, all four checks must pass without warnings or errors:
+Before submitting any pull request or declaring a task complete, all checks must pass without warnings or errors:
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo test --workspace -j 2
+cargo deny check licenses
+cargo deny check advisories
 cargo build --workspace
 ```
+
+### Windows MSVC Build Note
+On Windows systems using MSVC, running `cargo test --workspace` concurrently with high thread counts can cause `link.exe` to exceed virtual memory limits (`fatal error LNK1102: out of memory`). Always throttle test linking using `-j 2` (as documented in Pitfall P-025).
 
 ## Commit Conventions
 Commit messages must follow the Conventional Commits specification:

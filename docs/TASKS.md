@@ -37,7 +37,16 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Real CPU timings, memory consumption, supply-chain verification (source URL, license, SHA-256, operator compatibility in `ort`), robustness testing (zero-byte, truncated, 24MP), threading sweep, and visual quality review package (`bench/out/compare/` and `bench/out/index.html`) generated and reported in `docs/BENCHMARKS.md` for owner decision. Two-tier architecture accepted in D-018. Verified.
 - [x] Implement basic post-processing in `crates/core::pipeline` (upscale mask, bilinear interpolation, alpha blending).
   - Acceptance criterion: Generates valid 32-bit RGBA image matching source dimensions. Verified.
-- [ ] Phase 1D: Implement advanced post-processing in `crates/core::pipeline` (guided-filter refinement, feathering in transition zone, defringing).
+- [x] Phase 1D-1: Housekeeping, batch processing, and release readiness.
+  - [x] Step 0: Toolchain verification (Rust 1.98.1), transitive license audit via `cargo-deny`, `deny.toml` creation, and CI cargo-deny integration.
+  - [x] Step 1: Batch folder processing in `rustmatte` CLI with `--recursive`, `--out <DIR>`, deterministic collision resolution (`<stem>_<ext>.png`), `--skip-existing`, `--overwrite`, and tri-state exit codes (`0`, `1`, `2`).
+  - [x] Step 1: Early downscaling `--max-side <N>` in core pipeline and CLI, bounding decode and postprocessing overhead on 24MP images.
+  - [x] Step 2: Batch verification on 100 images (97 valid + 1 corrupt truncated + 1 zero-byte + 1 fake text): verified flat memory profile (~313 MB flat on Fast tier, ~1.91 GB flat on Quality tier, zero memory leaks).
+  - [x] Step 2: Benchmarked `--max-side 1024` on 24MP image: reduced peak RAM by 209 MB and cut postprocessing time from 2883ms to 43ms (-98.5%).
+  - [x] Step 2: Ctrl+C interruption and `--skip-existing` recovery: verified 0 orphaned temp files and clean resumption of skipped files.
+  - [x] Step 3: Multi-platform release packaging workflow `.github/workflows/release.yml` with SHA-256 checksums and automated release notes.
+  - [x] Step 4: Documentation synchronization (`README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/PITFALLS.md`).
+- [ ] Phase 1D-2: Implement advanced post-processing in `crates/core::pipeline` (guided-filter refinement, feathering in transition zone, defringing).
   - Acceptance criterion: Refinement filter smooths transition zones and defringes semi-transparent edge halos.
 - [x] Implement CLI single-image command in `crates/cli` (`rustmatte input.jpg -o output.png`).
   - Acceptance criterion: Running CLI on sample image creates valid transparent PNG with network disconnected after model cache. Verified.
