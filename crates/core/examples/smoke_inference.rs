@@ -10,6 +10,7 @@ use ndarray::Array4;
 use ort::session::Session;
 use ort::value::Tensor;
 
+#[cfg(windows)]
 #[repr(C)]
 #[derive(Default)]
 struct ProcessMemoryCounters {
@@ -25,6 +26,7 @@ struct ProcessMemoryCounters {
     peak_pagefile_usage: usize,
 }
 
+#[cfg(windows)]
 #[link(name = "psapi")]
 extern "system" {
     fn GetCurrentProcess() -> *mut std::ffi::c_void;
@@ -35,6 +37,7 @@ extern "system" {
     ) -> i32;
 }
 
+#[cfg(windows)]
 fn get_peak_working_set_mb() -> f64 {
     unsafe {
         let mut pmc = ProcessMemoryCounters {
@@ -47,6 +50,11 @@ fn get_peak_working_set_mb() -> f64 {
             0.0
         }
     }
+}
+
+#[cfg(not(windows))]
+fn get_peak_working_set_mb() -> f64 {
+    0.0
 }
 
 #[derive(Debug, Clone, Default)]

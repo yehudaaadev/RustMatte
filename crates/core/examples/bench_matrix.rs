@@ -14,6 +14,7 @@ use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
 use ort::value::Tensor;
 
+#[cfg(windows)]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 struct ProcessMemoryCounters {
@@ -29,6 +30,7 @@ struct ProcessMemoryCounters {
     peak_pagefile_usage: usize,
 }
 
+#[cfg(windows)]
 #[link(name = "psapi")]
 extern "system" {
     fn GetCurrentProcess() -> *mut std::ffi::c_void;
@@ -49,6 +51,7 @@ struct MemorySnapshot {
     peak_private_mb: f64,
 }
 
+#[cfg(windows)]
 fn get_memory_snapshot() -> MemorySnapshot {
     unsafe {
         let mut pmc = ProcessMemoryCounters {
@@ -66,6 +69,11 @@ fn get_memory_snapshot() -> MemorySnapshot {
             MemorySnapshot::default()
         }
     }
+}
+
+#[cfg(not(windows))]
+fn get_memory_snapshot() -> MemorySnapshot {
+    MemorySnapshot::default()
 }
 
 fn median(mut values: Vec<f64>) -> f64 {
