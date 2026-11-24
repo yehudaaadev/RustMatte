@@ -1,0 +1,14 @@
+[package]
+name = "rustmatte-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rustmatte"
+path = "src/main.rs"
+
+[dependencies]
+rustmatte-core = { path = "../core" }
