@@ -36,7 +36,7 @@ pub enum CoreError {
     },
 
     /// Required ONNX model file was not found.
-    #[error("Model file not found at '{path}' for tier {tier:?}. Automatic downloading will be available in a later version.")]
+    #[error("Model file not found at '{path}' for tier {tier:?}")]
     ModelNotFound {
         /// Path where the model was looked up.
         path: PathBuf,
@@ -53,6 +53,99 @@ pub enum CoreError {
         expected: String,
         /// Actual computed SHA-256 hash string.
         actual: String,
+    },
+
+    /// Insecure plain HTTP URL was rejected.
+    #[error("Insecure HTTP URL '{url}' is prohibited. Models must be fetched over HTTPS (or set RUSTMATTE_ALLOW_INSECURE_LOCALHOST=1 for local test servers).")]
+    InsecureHttpProhibited {
+        /// Rejected URL.
+        url: String,
+    },
+
+    /// Download failed due to HTTP status.
+    #[error("Failed to download model from '{url}': HTTP {status} {status_text}. {suggested_fix}")]
+    DownloadHttpStatus {
+        /// Target URL.
+        url: String,
+        /// HTTP status code.
+        status: u16,
+        /// HTTP status text.
+        status_text: String,
+        /// Actionable recommendation for the user.
+        suggested_fix: String,
+    },
+
+    /// Download received HTML response instead of binary model data.
+    #[error("Download from '{url}' returned an HTML page instead of binary model data. The file may have moved or the server requires authentication.")]
+    DownloadHtmlResponse {
+        /// Target URL.
+        url: String,
+    },
+
+    /// Download stream was truncated before reaching expected size.
+    #[error("Download truncated for '{url}'. Received {received} bytes, expected {expected} bytes. Check your network connection and retry.")]
+    DownloadTruncated {
+        /// Target URL.
+        url: String,
+        /// Actual received bytes.
+        received: u64,
+        /// Expected byte length.
+        expected: u64,
+    },
+
+    /// Download stream exceeded the expected file size.
+    #[error("Download exceeded expected size for '{url}'. Received more than {expected} bytes. Aborting download for safety.")]
+    DownloadOversized {
+        /// Target URL.
+        url: String,
+        /// Expected byte length.
+        expected: u64,
+    },
+
+    /// Network error or connection dropped during download.
+    #[error("Network connection error while connecting to '{url}': {reason}. Verify internet connectivity or place the model manually.")]
+    DownloadNetwork {
+        /// Target URL.
+        url: String,
+        /// Error description.
+        reason: String,
+    },
+
+    /// Cache directory is not writable.
+    #[error("Cache directory '{path}' is not writable: {reason}. Check directory permissions or configure RUSTMATTE_MODEL_DIR.")]
+    CacheDirUnwritable {
+        /// Target cache path.
+        path: PathBuf,
+        /// Error description.
+        reason: String,
+    },
+
+    /// Download was forbidden by configuration (--no-download).
+    #[error("Model '{model_id}' is not found locally and network downloads are disabled by --no-download. Place '{filename}' in '{expected_path}' or run without --no-download.")]
+    DownloadForbidden {
+        /// Model identifier.
+        model_id: &'static str,
+        /// Expected filename.
+        filename: &'static str,
+        /// Suggested target directory or path.
+        expected_path: PathBuf,
+    },
+
+    /// Download requires confirmation in non-interactive environment.
+    #[error("Model '{model_id}' needs to be downloaded ({size_mb:.1} MB from {host}, license {license}). Run with '--yes' to confirm download, or run 'rustmatte models download', or place '{filename}' in '{expected_path}'.")]
+    DownloadConsentRequired {
+        /// Model identifier.
+        model_id: &'static str,
+        /// Expected filename.
+        filename: &'static str,
+        /// Size in MB.
+        size_mb: f64,
+        /// Source hostname.
+        host: String,
+        /// Model license.
+        license: &'static str,
+        /// Destination path.
+        expected_path: PathBuf,
     },
 
     /// Failed to initialize or execute ONNX Runtime session.

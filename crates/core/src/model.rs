@@ -1,4 +1,4 @@
-//! Model tier specifications, parameters, and verification.
+//! Model tier specifications, manifest registry, cache directory resolution, and integrity verification.
 
 use std::fs::File;
 use std::io::Read;
@@ -30,7 +30,7 @@ pub enum ModelKind {
     U2Netp,
 }
 
-/// Execution specifications for a neural network model.
+/// Execution specifications and distribution manifest for an AI model.
 #[derive(Debug, Clone)]
 pub struct ModelSpec {
     /// Model tier enum.
@@ -43,6 +43,14 @@ pub struct ModelSpec {
     pub default_filename: &'static str,
     /// Expected SHA-256 hash in lowercase hex.
     pub expected_sha256: &'static str,
+    /// Expected file size in bytes.
+    pub expected_size: u64,
+    /// Official model license.
+    pub license: &'static str,
+    /// Short description of the source repository or export.
+    pub source_description: &'static str,
+    /// Ordered list of candidate download URLs.
+    pub source_urls: &'static [&'static str],
     /// Tensor input width in pixels.
     pub width: u32,
     /// Tensor input height in pixels.
@@ -59,14 +67,12 @@ pub struct ModelSpec {
     pub std: [f32; 3],
 }
 
-// CITED PARAMETER SOURCES:
+// CITED PARAMETER SOURCES & MANIFEST:
 //
 // 1. BiRefNet_lite_512:
 //    - Source export: https://huggingface.co/studioludens/birefnet-lite-512 (documented in docs/references/README.md)
 //    - Verified in crates/core/examples/bench_matrix.rs lines 333-341
-//    - Input shape: 512x512 RGB (ImageNet mean [0.485, 0.456, 0.406], std [0.229, 0.224, 0.225])
-//    - Input tensor: "input_image"
-//    - Output tensor: "output_image" (raw logits requiring sigmoid activation)
+//    - Real byte length: 191,877,254 bytes
 //    - SHA-256: 1cb0fb360dadd15af77c639085d77a9df67db0c64315560c3de005f676345ac2
 pub static SPEC_QUALITY: ModelSpec = ModelSpec {
     tier: ModelTier::Quality,
@@ -74,6 +80,14 @@ pub static SPEC_QUALITY: ModelSpec = ModelSpec {
     name: "BiRefNet Lite 512 (Quality Tier)",
     default_filename: "birefnet_lite_512.onnx",
     expected_sha256: "1cb0fb360dadd15af77c639085d77a9df67db0c64315560c3de005f676345ac2",
+    expected_size: 191_877_254,
+    license: "MIT",
+    source_description:
+        "BiRefNet_lite 512 FP32 ONNX export from HuggingFace (studioludens/birefnet-lite-512)",
+    source_urls: &[
+        "TODO(owner): fill after the release is created",
+        "https://huggingface.co/studioludens/birefnet-lite-512/resolve/main/onnx/model.onnx",
+    ],
     width: 512,
     height: 512,
     input_name: "input_image",
@@ -86,9 +100,7 @@ pub static SPEC_QUALITY: ModelSpec = ModelSpec {
 // 2. U-2-Netp:
 //    - Source export: https://huggingface.co/edgetools/u2netp (documented in docs/references/README.md)
 //    - Verified in crates/core/examples/bench_matrix.rs lines 342-350
-//    - Input shape: 320x320 RGB (ImageNet mean [0.485, 0.456, 0.406], std [0.229, 0.224, 0.225])
-//    - Input tensor: "input.1"
-//    - Output tensor: "1959" (logits requiring min-max normalization)
+//    - Real byte length: 4,574,861 bytes
 //    - SHA-256: 309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8
 pub static SPEC_FAST: ModelSpec = ModelSpec {
     tier: ModelTier::Fast,
@@ -96,6 +108,13 @@ pub static SPEC_FAST: ModelSpec = ModelSpec {
     name: "U-2-Netp (Fast Tier)",
     default_filename: "u2netp.onnx",
     expected_sha256: "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    expected_size: 4_574_861,
+    license: "Apache-2.0",
+    source_description: "U-2-Netp 320 FP32 ONNX export from HuggingFace (edgetools/u2netp)",
+    source_urls: &[
+        "TODO(owner): fill after the release is created",
+        "https://huggingface.co/edgetools/u2netp/resolve/main/u2netp.onnx",
+    ],
     width: 320,
     height: 320,
     input_name: "input.1",
@@ -114,8 +133,45 @@ pub fn spec_for_tier(tier: ModelTier) -> &'static ModelSpec {
     }
 }
 
-/// Verifies that a local model file matches its expected SHA-256 checksum.
-pub fn verify_model_checksum(path: &Path, expected_hex: &str) -> Result<(), CoreError> {
+/// Returns the default OS cache directory for RustMatte models.
+///
+/// Locations:
+/// - Windows: `%LOCALAPPDATA%\rustmatte\models`
+/// - macOS: `~/Library/Application Support/rustmatte/models`
+/// - Linux: `$XDG_DATA_HOME/rustmatte/models` or `~/.local/share/rustmatte/models`
+#[must_use]
+pub fn default_cache_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .map(|d| d.join("rustmatte").join("models"))
+        .unwrap_or_else(|| PathBuf::from("models"))
+}
+
+/// Model presence and integrity status in local filesystem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelStatus {
+    /// Present in local storage and SHA-256 verified.
+    Verified {
+        /// Absolute or relative path to the verified model file.
+        path: PathBuf,
+    },
+    /// Present in local storage but corrupted or modified.
+    Corrupt {
+        /// Path to corrupted file.
+        path: PathBuf,
+        /// Expected SHA-256 hash.
+        expected: String,
+        /// Actual computed SHA-256 hash.
+        actual: String,
+    },
+    /// Absent from all lookup locations.
+    Missing {
+        /// Expected path in the OS cache directory.
+        expected_cache_path: PathBuf,
+    },
+}
+
+/// Computes the SHA-256 hash of a file on disk.
+pub fn compute_file_sha256(path: &Path) -> Result<String, CoreError> {
     let mut file = File::open(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             CoreError::ModelNotFound {
@@ -138,7 +194,12 @@ pub fn verify_model_checksum(path: &Path, expected_hex: &str) -> Result<(), Core
         hasher.update(&buffer[..count]);
     }
 
-    let actual_hex = format!("{:x}", hasher.finalize());
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Verifies that a local model file matches its expected SHA-256 checksum.
+pub fn verify_model_checksum(path: &Path, expected_hex: &str) -> Result<(), CoreError> {
+    let actual_hex = compute_file_sha256(path)?;
     if actual_hex.eq_ignore_ascii_case(expected_hex) {
         Ok(())
     } else {
@@ -150,20 +211,144 @@ pub fn verify_model_checksum(path: &Path, expected_hex: &str) -> Result<(), Core
     }
 }
 
-/// Resolves the model path, checking the default `./models/` location if omitted.
+/// Checks the presence and integrity of a model tier across the hierarchical lookup chain.
+///
+/// Hierarchy:
+/// 1. Custom path (if specified)
+/// 2. `RUSTMATTE_MODEL_DIR` environment variable
+/// 3. OS cache directory (`default_cache_dir()`)
+/// 4. Local `./models/` directory
+#[must_use]
+pub fn check_model_status_with_custom(custom_path: Option<&Path>, tier: ModelTier) -> ModelStatus {
+    let spec = spec_for_tier(tier);
+
+    // 1. Explicit custom path
+    if let Some(custom) = custom_path {
+        if custom.exists() {
+            return match compute_file_sha256(custom) {
+                Ok(actual) => {
+                    if actual.eq_ignore_ascii_case(spec.expected_sha256) {
+                        ModelStatus::Verified {
+                            path: custom.to_path_buf(),
+                        }
+                    } else {
+                        ModelStatus::Corrupt {
+                            path: custom.to_path_buf(),
+                            expected: spec.expected_sha256.to_string(),
+                            actual,
+                        }
+                    }
+                }
+                Err(_) => ModelStatus::Missing {
+                    expected_cache_path: custom.to_path_buf(),
+                },
+            };
+        }
+        return ModelStatus::Missing {
+            expected_cache_path: custom.to_path_buf(),
+        };
+    }
+
+    // 2. Environment variable RUSTMATTE_MODEL_DIR
+    if let Ok(env_dir) = std::env::var("RUSTMATTE_MODEL_DIR") {
+        let p = PathBuf::from(env_dir).join(spec.default_filename);
+        if p.exists() {
+            return match compute_file_sha256(&p) {
+                Ok(actual) => {
+                    if actual.eq_ignore_ascii_case(spec.expected_sha256) {
+                        ModelStatus::Verified { path: p }
+                    } else {
+                        ModelStatus::Corrupt {
+                            path: p,
+                            expected: spec.expected_sha256.to_string(),
+                            actual,
+                        }
+                    }
+                }
+                Err(_) => ModelStatus::Missing {
+                    expected_cache_path: p,
+                },
+            };
+        }
+    }
+
+    // 3. OS cache directory
+    let cache_path = default_cache_dir().join(spec.default_filename);
+    if cache_path.exists() {
+        return match compute_file_sha256(&cache_path) {
+            Ok(actual) => {
+                if actual.eq_ignore_ascii_case(spec.expected_sha256) {
+                    ModelStatus::Verified { path: cache_path }
+                } else {
+                    ModelStatus::Corrupt {
+                        path: cache_path,
+                        expected: spec.expected_sha256.to_string(),
+                        actual,
+                    }
+                }
+            }
+            Err(_) => ModelStatus::Missing {
+                expected_cache_path: cache_path,
+            },
+        };
+    }
+
+    // 4. Local ./models/ directory
+    let local_path = PathBuf::from("models").join(spec.default_filename);
+    if local_path.exists() {
+        return match compute_file_sha256(&local_path) {
+            Ok(actual) => {
+                if actual.eq_ignore_ascii_case(spec.expected_sha256) {
+                    ModelStatus::Verified { path: local_path }
+                } else {
+                    ModelStatus::Corrupt {
+                        path: local_path,
+                        expected: spec.expected_sha256.to_string(),
+                        actual,
+                    }
+                }
+            }
+            Err(_) => ModelStatus::Missing {
+                expected_cache_path: cache_path,
+            },
+        };
+    }
+
+    ModelStatus::Missing {
+        expected_cache_path: cache_path,
+    }
+}
+
+/// Checks the presence and integrity of a model tier using standard lookup order.
+#[must_use]
+pub fn check_model_status(tier: ModelTier) -> ModelStatus {
+    check_model_status_with_custom(None, tier)
+}
+
+/// Resolves the model path across the lookup chain and verifies its SHA-256 checksum.
+///
+/// Fails with `CoreError::ModelChecksumMismatch` if a file is found but corrupted.
+/// Fails with `CoreError::ModelNotFound` if no file is found.
 pub fn resolve_model_path(
     custom_path: Option<&Path>,
     tier: ModelTier,
 ) -> Result<PathBuf, CoreError> {
-    let spec = spec_for_tier(tier);
-    let path = match custom_path {
-        Some(p) => p.to_path_buf(),
-        None => PathBuf::from("models").join(spec.default_filename),
-    };
-
-    if !path.exists() {
-        return Err(CoreError::ModelNotFound { path, tier });
+    match check_model_status_with_custom(custom_path, tier) {
+        ModelStatus::Verified { path } => Ok(path),
+        ModelStatus::Corrupt {
+            path,
+            expected,
+            actual,
+        } => Err(CoreError::ModelChecksumMismatch {
+            path,
+            expected,
+            actual,
+        }),
+        ModelStatus::Missing {
+            expected_cache_path,
+        } => Err(CoreError::ModelNotFound {
+            path: expected_cache_path,
+            tier,
+        }),
     }
-
-    Ok(path)
 }

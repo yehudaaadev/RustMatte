@@ -1,6 +1,5 @@
 # Rust build artifacts
 target/
-Cargo.lock
 
 # Node / Frontend build artifacts
 node_modules/
