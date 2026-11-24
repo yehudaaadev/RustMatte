@@ -9,6 +9,25 @@ Built with Rust. Not affiliated with or endorsed by the Rust Foundation.
 ## Overview
 RustMatte is a standalone desktop and command-line utility for removing image backgrounds locally. Images never leave your device: processing occurs 100% offline using a local neural network on CPU (with optional hardware acceleration).
 
+## Desktop Application (GUI)
+
+RustMatte includes a native desktop application built with **Tauri 2** and **Svelte 5**:
+- **Interactive Before/After Slider**: Real-time split view comparing original and cutout.
+- **Background Preview**: Transparent checkerboard, solid white, solid black, or custom color.
+- **Queue**: Drag and drop single or multiple images.
+- **Bilingual & Theme Support**: English and Indonesian with instant toggle; Dark/Light mode.
+
+### Running the Desktop App
+```bash
+# Run the pre-compiled production executable
+.\target\release\rustmatte-app.exe
+
+# Or run in development mode (requires Node.js and Rust toolchain)
+cd crates/app
+npm install
+npm run tauri dev
+```
+
 ## CLI Usage
 
 ### Single Image Processing

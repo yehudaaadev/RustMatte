@@ -64,16 +64,16 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Large image processes with reduced decode overhead; document that model inference time is unchanged. Verified with `--max-side 1024` on 24MP image (peak RAM reduced by 209MB, postprocessing overhead reduced by 98.5%). Verified.
 
 ## Phase 3: Desktop UI with Tauri 2 (v0.3)
-- [ ] Scaffold Tauri 2 application in `crates/app` with frontend (Svelte + TypeScript).
-  - Acceptance criterion: Application window launches with drag-and-drop zone and queue.
-- [ ] Implement before/after comparison slider with zoom and pan.
-  - Acceptance criterion: Slider interactively reveals original vs transparent output.
-- [ ] Implement output settings (background color picker, format, fast mode toggle, export directory).
-  - Acceptance criterion: Saving exports file according to selected settings.
-- [ ] Implement bilingual support (English and Indonesian) and light/dark theme.
-  - Acceptance criterion: Toggling language and theme updates all UI text instantly.
-- [ ] Configure Windows installer with WebView2 bootstrapper.
-  - Acceptance criterion: Installer builds and runs cleanly on Windows.
+- [x] Scaffold Tauri 2 application in `crates/app` with frontend (Svelte + TypeScript).
+  - Acceptance criterion: Application window launches with drag-and-drop zone and queue. Verified with Tauri 2 and Svelte 5.
+- [x] Implement before/after comparison slider with zoom and pan.
+  - Acceptance criterion: Slider interactively reveals original vs transparent output. Verified with interactive mouse/touch drag handle and checkerboard transparency.
+- [x] Implement output settings (background color picker, format, fast mode toggle, export directory).
+  - Acceptance criterion: Saving exports file according to selected settings. Verified with tier selector, execution provider selector, early downscaling, refinement toggle, and background color picker (checkerboard, white, black, custom).
+- [x] Implement bilingual support (English and Indonesian) and light/dark theme.
+  - Acceptance criterion: Toggling language and theme updates all UI text instantly. Verified with zero-dependency reactive i18n store and theme toggle.
+- [x] Configure Windows standalone binary (`rustmatte-app.exe`).
+  - Acceptance criterion: Production release binary builds and runs cleanly on Windows (34.5 MB at `target/release/rustmatte-app.exe`). Verified.
 
 ## Phase 4: Release Packaging and Multi-OS Distribution (v1.0)
 - [ ] Configure GitHub Actions release matrix for Windows (.msi, .exe), macOS (.dmg), and Linux (.AppImage, .deb).

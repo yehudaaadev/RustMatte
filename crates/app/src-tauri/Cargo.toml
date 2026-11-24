@@ -1,0 +1,22 @@
+[package]
+name = "rustmatte-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "rustmatte_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.6", features = [] }
+
+[dependencies]
+rustmatte-core = { path = "../../core" }
+tauri = { version = "=2.12.7", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22.1"
+image = { version = "0.25.10", default-features = false, features = ["png"] }

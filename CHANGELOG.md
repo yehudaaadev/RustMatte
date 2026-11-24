@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Tauri 2 Desktop Application (`crates/app`):
+  - Native standalone executable `rustmatte-app.exe` (34.5 MB).
+  - Modern Svelte 5 frontend with runes (`$state`, `$derived`).
+  - Interactive Before/After split comparison slider with touch and mouse drag handles.
+  - Background color preview picker (Transparent checkerboard, Solid White, Solid Black, Custom HEX color).
+  - Drag-and-drop file queue supporting single and batch image additions.
+  - Real-time output settings (Quality vs Fast tier, CPU vs DirectML GPU device, early downscaling slider, edge refinement toggle).
+  - Model status detection and on-demand background model downloader in UI.
+  - Bilingual localization (English and Bahasa Indonesia) with instant reactive switching.
+  - Dark and Light theme toggle with localStorage persistence.
+  - Per-stage latency breakdown display (Decode, Preprocess, Inference, Refinement).
 - Hardware execution providers for ONNX Runtime:
   - Added `--device <cpu|directml|coreml|auto>` CLI argument (default: `cpu`).
   - Added `directml` cargo feature enabling DirectX 12 hardware acceleration on Windows.
