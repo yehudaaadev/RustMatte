@@ -19,22 +19,30 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --all -- --check` all exit with code 0. Verified.
 
 ## Phase 1: Core Engine and CLI (v0.1)
-- [ ] Define error types in `crates/core::error` using `thiserror`.
-  - Acceptance criterion: Unit tests verify error formatting without panics.
-- [ ] Implement model manager in `crates/core::model` (download, SHA-256 verification, local caching in OS app data).
+- [x] Phase 1A: Inference smoke test for `BiRefNet_lite` on CPU via `ort`.
+  - Acceptance criterion: Model loads and executes on real CPU through `ort`, handles input/output tensor shapes and EXIF orientation, produces transparent PNG cutouts on at least 5 fixture images, reports median timings and peak memory. Verified on 6 fixtures (`rambut1`, `hewan1`, `produk1`, `kaca1`, `latarramai1`, `orang1`).
+- [x] Define error types in `crates/core::error` using `thiserror`.
+  - Acceptance criterion: Unit tests verify error formatting without panics. Verified.
+- [x] Phase 1C-1: Local model resolution and SHA-256 integrity verification in `crates/core::model`.
+  - Acceptance criterion: Verifies SHA-256 checksum against pinned reference hash, rejects corrupt hash, and locates model in `./models/`. Verified.
+- [ ] Phase 1C-2: Implement automatic model downloader in `crates/core::model` (download, SHA-256 verification, local caching in OS app data).
   - Acceptance criterion: Test verifies cache hit for existing valid model and rejects corrupt hash; no model bundling in repository.
-- [ ] Implement image pre-processing in `crates/core::image_ops` (aspect-ratio resize, normalization to tensor for standard formats: JPEG, PNG, WebP, BMP).
-  - Acceptance criterion: Test validates normalized tensor output format; unsupported formats return typed error.
-- [ ] Implement ONNX inference session in `crates/core::pipeline` using pinned `ort` on CPU by default.
-  - Acceptance criterion: Inference runs against real model on CPU and produces raw probability mask output.
-- [ ] Benchmark candidate models (`BiRefNet_lite` vs `ISNet`) on CPU using `tests/fixtures`.
-  - Acceptance criterion: Real CPU timings, memory consumption, supply-chain verification (source URL, license, SHA-256, operator compatibility in `ort`), and visual quality notes reported to owner for model selection.
-- [ ] Implement post-processing in `crates/core::image_ops` (upscale mask, guided-filter refinement, feathering in transition zone, defringing, alpha blending).
-  - Acceptance criterion: Generates valid 32-bit RGBA image matching source dimensions.
-- [ ] Implement CLI single-image command in `crates/cli` (`rustmatte input.jpg -o output.png`).
-  - Acceptance criterion: Running CLI on sample image creates valid transparent PNG with network disconnected after model cache.
-- [ ] Test CLI across varied sample images.
-  - Acceptance criterion: Diverse sample images processed with acceptable transparent cutout quality.
+- [x] Implement image pre-processing in `crates/core::pipeline` (aspect-ratio resize, normalization to tensor for standard formats: JPEG, PNG, WebP, BMP).
+  - Acceptance criterion: Test validates normalized tensor output format; unsupported formats return typed error. Verified.
+- [x] Phase 1C: Implement image decoding with damage/truncation warning flag in `crates/core::decode`.
+  - Acceptance criterion: Damaged or truncated files decode with a warning flag so CLI/UI can report "file is damaged or incomplete" while still producing output when possible; valid files decode without warning flag. Verified on `corrupt_truncated.jpg`.
+- [x] Implement ONNX inference session in `crates/core::session` using pinned `ort` on CPU by default with D-015 allocator.
+  - Acceptance criterion: Inference runs against real model on CPU and produces raw probability mask output. Verified.
+- [x] Benchmark candidate models (`BiRefNet_lite` vs `ISNet` vs `U-2-Netp`) on CPU using `tests/fixtures` (Phase 1B).
+  - Acceptance criterion: Real CPU timings, memory consumption, supply-chain verification (source URL, license, SHA-256, operator compatibility in `ort`), robustness testing (zero-byte, truncated, 24MP), threading sweep, and visual quality review package (`bench/out/compare/` and `bench/out/index.html`) generated and reported in `docs/BENCHMARKS.md` for owner decision. Two-tier architecture accepted in D-018. Verified.
+- [x] Implement basic post-processing in `crates/core::pipeline` (upscale mask, bilinear interpolation, alpha blending).
+  - Acceptance criterion: Generates valid 32-bit RGBA image matching source dimensions. Verified.
+- [ ] Phase 1D: Implement advanced post-processing in `crates/core::pipeline` (guided-filter refinement, feathering in transition zone, defringing).
+  - Acceptance criterion: Refinement filter smooths transition zones and defringes semi-transparent edge halos.
+- [x] Implement CLI single-image command in `crates/cli` (`rustmatte input.jpg -o output.png`).
+  - Acceptance criterion: Running CLI on sample image creates valid transparent PNG with network disconnected after model cache. Verified.
+- [x] Test CLI across varied sample images.
+  - Acceptance criterion: Diverse sample images processed with acceptable transparent cutout quality (verified across cat, person, shirt, 24MP with bit-for-bit regression parity against Phase 1B). Verified.
 
 ## Phase 2: Batch Processing, Formats, and Performance (v0.2)
 - [ ] Implement folder processing with `rayon` and bounded concurrency (1-2 full-resolution images in RAM).

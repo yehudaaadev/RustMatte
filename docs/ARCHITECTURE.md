@@ -19,11 +19,26 @@ RustMatte/
 └── README.md                  (project overview, planned)
 ```
 
-## Crate Responsibilities
-- `crates/core` (planned): Model manager (first-run download, SHA-256 verification, caching), pre-processing (aspect-ratio resize, normalization), ONNX inference, post-processing (guided-filter edge refinement, defringing, alpha blending), and custom error types.
-- `crates/cli` (planned): Command-line interface using `clap` (derive). Thin wrapper around `crates/core`.
-- `crates/app` (planned): Desktop application using Tauri 2 with a web frontend (Svelte/TypeScript). Thin wrapper around `crates/core`.
-- `web/` (planned v2): WebAssembly and PWA implementation for browser-based offline processing.
+## Crate Responsibilities and Implemented Modules
+
+### `crates/core` (Implemented in Phase 1C-1)
+Core background removal engine library. Contains no UI code and performs zero terminal printing.
+- `src/error.rs`: Strongly typed `CoreError` using `thiserror` (handling decode errors, dimension bounds, missing models, checksum mismatches, ORT session errors, and I/O).
+- `src/model.rs`: Defines `ModelTier` (`Quality`, `Fast`), `ModelSpec` (with parameters cited from benchmarks), and SHA-256 verification using the `sha2` crate.
+- `src/session.rs`: Handles ONNX Runtime session creation. Enforces D-015 memory allocator settings (`with_memory_pattern(false)` and `session.use_env_allocators = 1`) and calculates default thread heuristic (half logical CPUs clamped to 2..=8).
+- `src/decode.rs`: Safe image decoding with dimension bounds (16384px limit, 512MB max allocation), EXIF orientation correction, and truncation/damage detection (`Warning::DamagedInput`).
+- `src/pipeline.rs`: Preprocessing (RGB triangle resize and NCHW tensor normalization), postprocessing (raw logits sigmoid/min-max to 8-bit mask and bilinear upscaling), `refine_mask` hook for Phase 1D, and `apply_mask` alpha blending.
+- `src/lib.rs`: Minimal public API (`Config`, `Output`, `Remover::new`, `Remover::process`). Manages global ORT environment safely across instances via `std::sync::OnceLock`.
+
+### `crates/cli` (Implemented in Phase 1C-1)
+Lightweight command-line interface binary using `clap` (derive). Thin wrapper around `crates/core`.
+- `src/main.rs`: Argument parsing (`rustmatte <INPUT> -o <OUTPUT> [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite]`), input/output validation, atomic file creation (writing to a temporary file in the destination folder, then renaming), warning output to stderr, and standard exit codes.
+
+### `crates/app` (Planned for Phase 3)
+Desktop application using Tauri 2 with a web frontend (Svelte/TypeScript). Thin wrapper around `crates/core`.
+
+### `web/` (Planned for v2)
+WebAssembly and PWA implementation for browser-based offline processing.
 
 ## Dependency Rule
 - `crates/core` must contain NO UI code and NO printing to stdout/stderr. It returns strongly typed `Result<T, E>`.

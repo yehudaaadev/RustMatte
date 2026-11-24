@@ -99,19 +99,36 @@ Format:
 - Status: accepted
 - Alternatives considered: PolyForm Noncommercial (rejected because it is not open source and forbids business use by sellers/photographers), MIT/Apache-2.0 (allows proprietary closed-source relicensing and selling without sharing improvements). Supersedes D-010.
 
-### D-015: v1.0 Scope, Image Formats, and Backlog Segregation
+### D-015: ORT Session Configuration for BiRefNet CPU Inference
+- Date: 2026-11-24
+- Decision: For `BiRefNet_lite` on CPU with `ort` 2.0.0-rc.15, disable the default memory pattern (`with_memory_pattern(false)`) and enable environment system allocators (`with_config_entry("session.use_env_allocators", "1")`).
+- Reason: The default `BFCArena` allocator fails during the unrolled ASPP deformable convolution step with `BFCArena::AllocateRawInternal Failed to allocate memory for requested buffer of size 822083584` in `/decoder/decoder_block1/dec_att/aspp_deforms.2/atrous_conv/Sum`. Using OS environment allocators completely bypasses the arena allocation failure and allows stable CPU inference. Verified in Phase 1B ORT sweep: D-015 reduces peak Working Set by 1.33 GB (3,995 MB vs 5,331 MB).
+- Status: accepted
+- Alternatives considered: Using default arena allocator (fails with runtime crash), exporting custom ONNX without deformable convolution (untested, may reduce mask accuracy).
+
+### D-016: v1.0 Scope, Image Formats, and Backlog Segregation
 - Date: 2026-11-24
 - Decision: Restrict v1.0 input formats to JPEG, PNG, WebP, and BMP. Move camera RAW and HEIC decoding to v1.1 (first step for RAW: extract embedded preview JPEG). Move standalone photo compression utility to v1.x backlog. Add fast mode option (early downscale of large images to reduce decode time and memory).
 - Reason: HEIC requires complex cross-platform C library linkage, and RAW requires demosaicing and color profile management. Fast mode reduces decode latency and memory usage on large images without altering fixed model inference time.
 - Status: accepted
 - Alternatives considered: Full RAW/HEIC in v1.0 (rejected due to cross-platform compilation risk).
 
-### D-016: Platform Tiering and Default Execution Provider
+### D-017: Platform Tiering and Default Execution Provider
 - Date: 2026-11-24
 - Decision: Set CPU as the default execution provider across all platforms. Keep hardware execution providers (DirectML on Windows, CoreML on macOS) as optional settings with automatic CPU fallback. Designate Windows as the primary v1.0 target with full manual testing and WebView2 bootstrapper. Label macOS and Linux as experimental until physically tested, while building and testing in CI from Phase 0. Move Android to v3.
 - Reason: Guarantees reliable out-of-the-box operation on standard PCs without discrete GPUs or specialized driver setups.
 - Status: accepted
 - Alternatives considered: DirectML as default (unstable across varied hardware without fallback), immediate mobile support.
+
+### D-018: Default AI Model and Two-Tier Architecture Selection
+- Date: 2026-11-24
+- Decision: Adopt Two-Tier Model Architecture (Final):
+  1. Default Quality Tier: `BiRefNet_lite_512` (183 MB ONNX, MIT license).
+  2. Optional Fast Tier: `U-2-Netp` (4.36 MB ONNX, Apache-2.0 license). Mandatory honest caveat wherever described: "best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds."
+  3. `BiRefNet_lite_1024`, `ISNet`, `fp16`, and `q8` variants are out of scope.
+- Status: accepted
+- Reason: Balances commercial licensing safety, sub-4s latency on consumer CPUs, and crash-free memory consumption.
+- Alternatives considered: Single model BiRefNet 1024 (deferred due to memory exhaustion/crash), ISNet (dropped due to dataset non-commercial terms), U2Netp as only model (lacks micro-detail on hair).
 
 ---
 
