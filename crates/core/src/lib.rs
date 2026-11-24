@@ -13,6 +13,7 @@ pub mod download;
 pub mod error;
 pub mod model;
 pub mod pipeline;
+pub mod refine;
 pub mod session;
 
 pub use decode::Warning;
@@ -22,6 +23,7 @@ pub use model::{
     check_model_status, check_model_status_with_custom, default_cache_dir, spec_for_tier,
     ModelSpec, ModelStatus, ModelTier,
 };
+pub use refine::{apply_mask_with_refinement, refine_mask_guided, RefineConfig};
 
 /// Configuration options for initializing the background remover engine.
 #[derive(Debug, Clone)]
@@ -32,6 +34,8 @@ pub struct Config {
     pub model_path: Option<PathBuf>,
     /// Number of intra-op execution threads.
     pub threads: usize,
+    /// Edge refinement and color defringing settings.
+    pub refine: RefineConfig,
 }
 
 impl Default for Config {
@@ -40,6 +44,7 @@ impl Default for Config {
             tier: ModelTier::Quality,
             model_path: None,
             threads: session::default_thread_count(),
+            refine: RefineConfig::default(),
         }
     }
 }
@@ -78,6 +83,7 @@ pub struct Remover {
     session: Session,
     _env: Arc<ort::environment::Environment>,
     model_load_ms: f64,
+    refine: RefineConfig,
 }
 
 static GLOBAL_ENV: std::sync::OnceLock<Arc<ort::environment::Environment>> =
@@ -120,6 +126,7 @@ impl Remover {
             session,
             _env: env,
             model_load_ms,
+            refine: config.refine,
         })
     }
 
@@ -178,11 +185,11 @@ impl Remover {
         let t_post = Instant::now();
         let raw_mask = pipeline::postprocess_mask(raw_slice, self.spec, orig_w, orig_h)?;
 
-        // 4. Refine mask (Phase 1C: identity passthrough; Phase 1D: guided filter)
-        let mask = pipeline::refine_mask(raw_mask, img);
+        // 4. Refine mask (Phase 1D: Guided filter & selective transition feathering)
+        let mask = pipeline::refine_mask(raw_mask, img, &self.refine);
 
-        // 5. Apply mask as alpha
-        let image = pipeline::apply_mask(img, &mask);
+        // 5. Apply mask as alpha with defringing
+        let image = pipeline::apply_mask_with_options(img, &mask, self.refine.enable_defringing);
         let postprocess_ms = t_post.elapsed().as_secs_f64() * 1000.0;
 
         let timings = StageTimings {

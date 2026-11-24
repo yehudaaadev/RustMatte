@@ -22,6 +22,9 @@ rustmatte product.jpg -o cutout.png --tier fast
 # Early downscaling for huge images (bounds peak RAM and decode time)
 rustmatte large_photo.jpg -o cutout.png --max-side 1024
 
+# Disable edge refinement (Guided Filter & defringing) for raw model output
+rustmatte photo.jpg -o cutout.png --no-refine
+
 # Auto-confirm model download without interactive prompt
 rustmatte photo.jpg -o cutout.png --yes
 

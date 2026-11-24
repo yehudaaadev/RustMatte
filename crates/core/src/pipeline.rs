@@ -6,6 +6,7 @@ use ndarray::Array4;
 
 use crate::error::CoreError;
 use crate::model::{ModelKind, ModelSpec};
+use crate::refine::{apply_mask_with_refinement, refine_mask_guided, RefineConfig};
 
 /// Downscales an image early if its longest dimension exceeds `max_side`, preserving aspect ratio.
 ///
@@ -116,31 +117,22 @@ pub fn postprocess_mask(
     Ok(resized_mask)
 }
 
-/// Refines the raw segmentation mask against the original image.
-///
-/// Phase 1C: Basic mask resizing only (identity passthrough).
-/// Phase 1D: Guided filter edge refinement, alpha feathering, and defringing will plug in here.
+/// Refines the raw segmentation mask against the original image using Guided Filter and transition feathering.
 #[must_use]
-pub fn refine_mask(mask: GrayImage, _orig: &DynamicImage) -> GrayImage {
-    mask
+pub fn refine_mask(mask: GrayImage, orig: &DynamicImage, config: &RefineConfig) -> GrayImage {
+    refine_mask_guided(mask, orig, config)
+}
+
+/// Blends the original color channels with the alpha mask, applying optional color defringing.
+#[must_use]
+pub fn apply_mask_with_options(orig: &DynamicImage, mask: &GrayImage, defringe: bool) -> RgbaImage {
+    apply_mask_with_refinement(orig, mask, defringe)
 }
 
 /// Blends the original color channels with the alpha mask to produce a 32-bit RGBA image.
 #[must_use]
 pub fn apply_mask(orig: &DynamicImage, mask: &GrayImage) -> RgbaImage {
-    let (w, h) = orig.dimensions();
-    let rgb = orig.to_rgba8();
-    let mut cutout = RgbaImage::new(w, h);
-
-    for y in 0..h {
-        for x in 0..w {
-            let mut px = *rgb.get_pixel(x, y);
-            px[3] = mask.get_pixel(x, y)[0];
-            cutout.put_pixel(x, y, px);
-        }
-    }
-
-    cutout
+    apply_mask_with_options(orig, mask, false)
 }
 
 #[cfg(test)]

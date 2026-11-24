@@ -9,7 +9,7 @@ use rustmatte_core::model::{
     spec_for_tier, verify_model_checksum, ModelTier, SPEC_FAST, SPEC_QUALITY,
 };
 use rustmatte_core::pipeline::{apply_mask, postprocess_mask, preprocess_tensor};
-use rustmatte_core::{Config, Remover};
+use rustmatte_core::{Config, RefineConfig, Remover};
 
 #[test]
 fn test_dimension_limits_constant() {
@@ -201,6 +201,7 @@ fn test_remover_end_to_end_quality() {
         tier: ModelTier::Quality,
         model_path: Some(path),
         threads: 4,
+        refine: RefineConfig::default(),
     };
     let mut remover = Remover::new(config).expect("Failed to initialize Remover for Quality tier");
     let input_path = fixture_path("baju1.jpg");
@@ -222,6 +223,7 @@ fn test_remover_end_to_end_fast() {
         tier: ModelTier::Fast,
         model_path: Some(path),
         threads: 4,
+        refine: RefineConfig::default(),
     };
     let mut remover = Remover::new(config).expect("Failed to initialize Remover for Fast tier");
     let input_path = fixture_path("baju1.jpg");

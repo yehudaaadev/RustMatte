@@ -144,6 +144,13 @@ Format:
 - Reason: Prevents CPU cache thrashing and memory spikes that occur when running multiple high-resolution neural network inferences concurrently on consumer hardware. Guarantees flat, leak-free memory usage across 100+ images while ensuring deterministic, zero-data-loss output naming.
 - Alternatives considered: Threadpool/Rayon parallel image queue (exhausts RAM on large images, high contention on ORT intra-op threads), overwriting on collision (data loss risk).
 
+### D-021: Post-Processing Edge Refinement Pipeline (Fast Guided Filter, Selective Feathering, and Color Defringing)
+- Date: 2026-11-24
+- Decision: Implement an $O(N)$ separable 2D box-filtered Guided Filter ($r = 4, \epsilon = 10^{-4}$) using original grayscale luminance as guidance to align segmentation boundaries with fine strands of hair and subtle edges. Apply selective transition zone feathering locking definite foreground ($\ge 0.95$) to opaque ($255$) and definite background ($\le 0.05$) to transparent ($0$) to prevent interior softness. Implement a $5 \times 5$ boundary color defringing pass that extrapolates adjacent solid foreground RGB into semi-transparent boundary pixels ($\alpha < 235$) to decontaminate background color bleed and eliminate colored halos. Enable refinement by default in `Remover`, with an opt-out CLI flag `--no-refine`.
+- Status: accepted
+- Reason: Substantially elevates cutout quality on challenging hair, fur, and clothing silhouettes while adding negligible CPU runtime overhead (measured 25 ms on 1MP, 177 ms on 2MP; well below 300 ms budget).
+- Alternatives considered: Global Gaussian blur (causes interior softness and boundary bleeding), secondary neural matting network such as ViTMatte (adds hundreds of megabytes of model weight overhead and multi-second latency, violating lightweight offline desktop requirements).
+
 ---
 
 ## Superseded Decisions

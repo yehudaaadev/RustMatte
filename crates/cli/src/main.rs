@@ -14,7 +14,8 @@ use rustmatte_core::model::{
 };
 use rustmatte_core::session::default_thread_count;
 use rustmatte_core::{
-    download_model, extract_source_host, Config, ModelTier, Remover, RgbaImage, StageTimings,
+    download_model, extract_source_host, Config, ModelTier, RefineConfig, Remover, RgbaImage,
+    StageTimings,
 };
 
 /// Model processing tier for CLI selection.
@@ -65,6 +66,10 @@ struct Cli {
     /// Downscale image so that its longest side is at most N pixels, preserving aspect ratio (default: off)
     #[arg(long = "max-side")]
     max_side: Option<u32>,
+
+    /// Disable postprocessing edge refinement (Guided Filter and color defringing)
+    #[arg(long = "no-refine")]
+    no_refine: bool,
 
     /// Model tier: quality (default) or fast (best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds)
     #[arg(short = 't', long = "tier", default_value = "quality")]
@@ -333,6 +338,18 @@ fn save_image_atomic(image: &RgbaImage, output_path: &Path, overwrite: bool) -> 
     Ok(())
 }
 
+fn get_refine_config(cli: &Cli) -> RefineConfig {
+    if cli.no_refine {
+        RefineConfig {
+            enable_guided_filter: false,
+            enable_defringing: false,
+            ..RefineConfig::default()
+        }
+    } else {
+        RefineConfig::default()
+    }
+}
+
 fn run_single(cli: &Cli, input_path: &Path, output_path: &Path) -> Result<(), String> {
     if is_same_file(input_path, output_path) {
         return Err(format!(
@@ -358,6 +375,7 @@ fn run_single(cli: &Cli, input_path: &Path, output_path: &Path) -> Result<(), St
         tier,
         model_path: Some(resolved_model_path),
         threads: thread_count,
+        refine: get_refine_config(cli),
     };
 
     let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
@@ -430,6 +448,7 @@ fn run_batch(cli: &Cli, input_dir: &Path, output_dir: &Path) -> Result<ExitCode,
         tier,
         model_path: Some(resolved_model_path),
         threads: thread_count,
+        refine: get_refine_config(cli),
     };
 
     let mut remover = Remover::new(config).map_err(|e| e.to_string())?;

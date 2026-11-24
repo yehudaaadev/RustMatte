@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Advanced edge refinement pipeline (`crates/core::refine`):
+  - Fast Guided Filter with separable 2D box filtering ($O(N)$ runtime) using original grayscale luminance guidance.
+  - Selective transition zone feathering: locks interior foreground ($\ge 0.95$) to full opacity and background ($\le 0.05$) to full transparency, preventing blurry boundaries while refining uncertain edges.
+  - Boundary color defringing: $5 \times 5$ neighborhood decontamination extrapolating solid foreground RGB into semi-transparent edge pixels ($\alpha < 235$) to eliminate colored halos.
+- `--no-refine` CLI flag to disable postprocessing edge refinement and export raw segmentation masks.
 - Batch processing mode in `rustmatte` CLI: support directory inputs with automatic detection of supported image formats (`.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`).
 - `--out <DIR>` output directory option (defaults to `rustmatte-output` adjacent to input directory).
 - `--recursive` / `-r` flag for recursive directory scanning with symlink traversal guards.

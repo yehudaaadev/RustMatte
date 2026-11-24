@@ -54,8 +54,8 @@ WebAssembly and PWA implementation for browser-based offline processing.
 4. Normalize image pixel data to tensor shape and format expected by model.
 5. Run ONNX inference using CPU as default (optional hardware execution providers DirectML on Windows, CoreML on macOS, with automatic CPU fallback).
 6. Extract probability mask and upscale back to target dimensions.
-7. Refine mask: guided-filter refinement against original photo, feathering only in transition zone, and edge color cleanup (defringing).
-8. Apply mask as alpha channel, export transparent 32-bit PNG at specified resolution.
+7. Refine mask: Fast Guided Filter edge alignment ($r = 4, \epsilon = 10^{-4}$) using original grayscale luminance as guidance, selective transition zone feathering (locking solid interior foreground $\ge 0.95$ and definite background $\le 0.05$), and edge color cleanup (5x5 boundary defringing).
+8. Apply mask as alpha channel with defringing, export transparent 32-bit PNG at specified resolution.
 
 ## Concurrency & Memory Guardrails
 - Strictly sequential batch processing (D-020): Single shared ORT session (`Remover`) initialized once for the run.
