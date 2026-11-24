@@ -10,6 +10,10 @@ dist/
 # Tauri build outputs
 src-tauri/target/
 
+# Benchmark and output artifacts
+bench/
+bench/out/
+
 # AI Model weights and caches (models are downloaded on demand, never committed to git)
 models/
 *.onnx
@@ -19,6 +23,12 @@ models/
 *.bin
 *.safetensors
 *.engine
+
+# Media fixtures over 1MB
+*.mp4
+*.mov
+*.avi
+tests/fixtures/large_24mp.jpg
 
 # Environment and local secrets
 .env
