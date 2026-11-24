@@ -10,6 +10,11 @@ rust-version.workspace = true
 name = "rustmatte"
 path = "src/main.rs"
 
+[features]
+default = []
+directml = ["rustmatte-core/directml"]
+coreml = ["rustmatte-core/coreml"]
+
 [dependencies]
 rustmatte-core = { path = "../core" }
 clap = { version = "4.5.31", features = ["derive"] }

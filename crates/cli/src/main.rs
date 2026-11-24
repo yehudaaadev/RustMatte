@@ -14,8 +14,8 @@ use rustmatte_core::model::{
 };
 use rustmatte_core::session::default_thread_count;
 use rustmatte_core::{
-    download_model, extract_source_host, Config, ModelTier, RefineConfig, Remover, RgbaImage,
-    StageTimings,
+    download_model, extract_source_host, Config, ExecutionProvider, ModelTier, RefineConfig,
+    Remover, RgbaImage, StageTimings,
 };
 
 /// Model processing tier for CLI selection.
@@ -32,6 +32,30 @@ impl From<CliTier> for ModelTier {
         match tier {
             CliTier::Quality => ModelTier::Quality,
             CliTier::Fast => ModelTier::Fast,
+        }
+    }
+}
+
+/// Execution provider / hardware device for CLI selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliDevice {
+    /// Pure CPU inference with multi-threaded intra-op parallelism (default).
+    Cpu,
+    /// DirectML hardware acceleration for DirectX 12 GPUs on Windows.
+    Directml,
+    /// CoreML hardware acceleration for Apple Silicon / Neural Engine on macOS.
+    Coreml,
+    /// Automatically selects hardware acceleration with graceful CPU fallback.
+    Auto,
+}
+
+impl From<CliDevice> for ExecutionProvider {
+    fn from(device: CliDevice) -> Self {
+        match device {
+            CliDevice::Cpu => ExecutionProvider::Cpu,
+            CliDevice::Directml => ExecutionProvider::DirectML,
+            CliDevice::Coreml => ExecutionProvider::CoreML,
+            CliDevice::Auto => ExecutionProvider::Auto,
         }
     }
 }
@@ -74,6 +98,10 @@ struct Cli {
     /// Model tier: quality (default) or fast (best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds)
     #[arg(short = 't', long = "tier", default_value = "quality")]
     tier: CliTier,
+
+    /// Target hardware execution provider: cpu (default), directml, coreml, auto
+    #[arg(long = "device", default_value = "cpu")]
+    device: CliDevice,
 
     /// Custom path to ONNX model weights file. If omitted, uses standard lookup order
     #[arg(short = 'm', long = "model-path")]
@@ -376,6 +404,7 @@ fn run_single(cli: &Cli, input_path: &Path, output_path: &Path) -> Result<(), St
         model_path: Some(resolved_model_path),
         threads: thread_count,
         refine: get_refine_config(cli),
+        execution_provider: cli.device.into(),
     };
 
     let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
@@ -408,7 +437,10 @@ fn run_single(cli: &Cli, input_path: &Path, output_path: &Path) -> Result<(), St
         let total_ms =
             model_load_ms + decode_ms + preprocess_ms + inference_ms + postprocess_ms + write_ms;
 
-        eprintln!("\nExecution Timing Breakdown:");
+        eprintln!(
+            "\nExecution Timing Breakdown (Active device: {}):",
+            remover.execution_provider()
+        );
         eprintln!("  [timing] Model load:  {:>8.2} ms", model_load_ms);
         eprintln!("  [timing] Decode:      {:>8.2} ms", decode_ms);
         eprintln!("  [timing] Preprocess:  {:>8.2} ms", preprocess_ms);
@@ -449,6 +481,7 @@ fn run_batch(cli: &Cli, input_dir: &Path, output_dir: &Path) -> Result<ExitCode,
         model_path: Some(resolved_model_path),
         threads: thread_count,
         refine: get_refine_config(cli),
+        execution_provider: cli.device.into(),
     };
 
     let mut remover = Remover::new(config).map_err(|e| e.to_string())?;
@@ -547,6 +580,7 @@ fn run_batch(cli: &Cli, input_dir: &Path, output_dir: &Path) -> Result<ExitCode,
     };
 
     eprintln!("\nBatch Summary:");
+    eprintln!("  Device:       {}", remover.execution_provider());
     eprintln!("  Processed:    {processed}");
     eprintln!("  Skipped:      {skipped}");
     eprintln!("  Failed:       {failed}");
@@ -613,5 +647,47 @@ fn main() -> ExitCode {
             eprintln!("Error: {err}");
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn test_cli_device_parsing() {
+        let args = Cli::parse_from(["rustmatte", "input.jpg", "-o", "out.png"]);
+        assert_eq!(args.device, CliDevice::Cpu);
+
+        let args = Cli::parse_from([
+            "rustmatte",
+            "input.jpg",
+            "-o",
+            "out.png",
+            "--device",
+            "directml",
+        ]);
+        assert_eq!(args.device, CliDevice::Directml);
+
+        let args = Cli::parse_from([
+            "rustmatte",
+            "input.jpg",
+            "-o",
+            "out.png",
+            "--device",
+            "coreml",
+        ]);
+        assert_eq!(args.device, CliDevice::Coreml);
+
+        let args = Cli::parse_from([
+            "rustmatte",
+            "input.jpg",
+            "-o",
+            "out.png",
+            "--device",
+            "auto",
+        ]);
+        assert_eq!(args.device, CliDevice::Auto);
     }
 }

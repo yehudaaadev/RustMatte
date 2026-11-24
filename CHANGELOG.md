@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Hardware execution providers for ONNX Runtime:
+  - Added `--device <cpu|directml|coreml|auto>` CLI argument (default: `cpu`).
+  - Added `directml` cargo feature enabling DirectX 12 hardware acceleration on Windows.
+  - Added `coreml` cargo feature for Apple Silicon / Neural Engine on macOS.
+  - Multi-stage graceful fallback to CPU during session creation and runtime inference (e.g., when GPU memory is exhausted on large models).
+  - Explicit hardware session deallocation before CPU fallback to prevent dual-session memory exhaustion.
+  - Active execution provider reporting in verbose output and batch summary reports.
 - Advanced edge refinement pipeline (`crates/core::refine`):
   - Fast Guided Filter with separable 2D box filtering ($O(N)$ runtime) using original grayscale luminance guidance.
   - Selective transition zone feathering: locks interior foreground ($\ge 0.95$) to full opacity and background ($\le 0.05$) to full transparency, preventing blurry boundaries while refining uncertain edges.

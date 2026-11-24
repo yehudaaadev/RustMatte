@@ -25,6 +25,9 @@ rustmatte large_photo.jpg -o cutout.png --max-side 1024
 # Disable edge refinement (Guided Filter & defringing) for raw model output
 rustmatte photo.jpg -o cutout.png --no-refine
 
+# Target hardware execution provider (cpu default, directml for Windows DirectX 12 GPUs, coreml on macOS, auto)
+rustmatte photo.jpg -o cutout.png --device directml
+
 # Auto-confirm model download without interactive prompt
 rustmatte photo.jpg -o cutout.png --yes
 

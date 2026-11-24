@@ -202,6 +202,7 @@ fn test_remover_end_to_end_quality() {
         model_path: Some(path),
         threads: 4,
         refine: RefineConfig::default(),
+        execution_provider: rustmatte_core::ExecutionProvider::Cpu,
     };
     let mut remover = Remover::new(config).expect("Failed to initialize Remover for Quality tier");
     let input_path = fixture_path("baju1.jpg");
@@ -224,6 +225,7 @@ fn test_remover_end_to_end_fast() {
         model_path: Some(path),
         threads: 4,
         refine: RefineConfig::default(),
+        execution_provider: rustmatte_core::ExecutionProvider::Cpu,
     };
     let mut remover = Remover::new(config).expect("Failed to initialize Remover for Fast tier");
     let input_path = fixture_path("baju1.jpg");
@@ -234,4 +236,49 @@ fn test_remover_end_to_end_fast() {
 
     assert_eq!(output.image.dimensions(), (expected_w, expected_h));
     assert_eq!(output.mask.dimensions(), (expected_w, expected_h));
+}
+
+#[test]
+fn test_execution_provider_parsing_and_display() {
+    use rustmatte_core::{ActiveExecutionProvider, ExecutionProvider};
+    use std::str::FromStr;
+
+    assert_eq!(
+        ExecutionProvider::from_str("cpu").unwrap(),
+        ExecutionProvider::Cpu
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("directml").unwrap(),
+        ExecutionProvider::DirectML
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("dml").unwrap(),
+        ExecutionProvider::DirectML
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("gpu").unwrap(),
+        ExecutionProvider::DirectML
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("coreml").unwrap(),
+        ExecutionProvider::CoreML
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("ane").unwrap(),
+        ExecutionProvider::CoreML
+    );
+    assert_eq!(
+        ExecutionProvider::from_str("auto").unwrap(),
+        ExecutionProvider::Auto
+    );
+    assert!(ExecutionProvider::from_str("cuda").is_err());
+
+    assert_eq!(format!("{}", ExecutionProvider::Cpu), "cpu");
+    assert_eq!(format!("{}", ExecutionProvider::DirectML), "directml");
+    assert_eq!(format!("{}", ExecutionProvider::CoreML), "coreml");
+    assert_eq!(format!("{}", ExecutionProvider::Auto), "auto");
+
+    assert_eq!(format!("{}", ActiveExecutionProvider::Cpu), "CPU");
+    assert_eq!(format!("{}", ActiveExecutionProvider::DirectML), "DirectML");
+    assert_eq!(format!("{}", ActiveExecutionProvider::CoreML), "CoreML");
 }

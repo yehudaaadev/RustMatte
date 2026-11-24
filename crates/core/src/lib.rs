@@ -24,6 +24,10 @@ pub use model::{
     ModelSpec, ModelStatus, ModelTier,
 };
 pub use refine::{apply_mask_with_refinement, refine_mask_guided, RefineConfig};
+pub use session::{
+    create_session, create_session_with_provider, default_thread_count, ActiveExecutionProvider,
+    ExecutionProvider,
+};
 
 /// Configuration options for initializing the background remover engine.
 #[derive(Debug, Clone)]
@@ -36,6 +40,8 @@ pub struct Config {
     pub threads: usize,
     /// Edge refinement and color defringing settings.
     pub refine: RefineConfig,
+    /// Target hardware execution provider.
+    pub execution_provider: ExecutionProvider,
 }
 
 impl Default for Config {
@@ -45,6 +51,7 @@ impl Default for Config {
             model_path: None,
             threads: session::default_thread_count(),
             refine: RefineConfig::default(),
+            execution_provider: ExecutionProvider::Cpu,
         }
     }
 }
@@ -80,10 +87,13 @@ pub struct Output {
 /// Core background removal engine.
 pub struct Remover {
     spec: &'static ModelSpec,
-    session: Session,
+    session: Option<Session>,
     _env: Arc<ort::environment::Environment>,
     model_load_ms: f64,
     refine: RefineConfig,
+    active_ep: ActiveExecutionProvider,
+    model_path: PathBuf,
+    threads: usize,
 }
 
 static GLOBAL_ENV: std::sync::OnceLock<Arc<ort::environment::Environment>> =
@@ -111,23 +121,37 @@ impl Remover {
     /// Initializes a new remover engine with the provided configuration.
     ///
     /// Validates model presence via hierarchical lookup, verifies SHA-256 integrity,
-    /// and configures an ORT session with D-015 memory allocator settings.
+    /// and configures an ORT session with requested execution provider and fallback.
     pub fn new(config: Config) -> Result<Self, CoreError> {
         let t_start = Instant::now();
         let spec = spec_for_tier(config.tier);
         let model_path = model::resolve_model_path(config.model_path.as_deref(), config.tier)?;
 
         let env = get_or_init_ort_env()?;
-        let session = session::create_session(&env, &model_path, config.threads)?;
+        let (session, active_ep) = session::create_session_with_provider(
+            &env,
+            &model_path,
+            config.threads,
+            config.execution_provider,
+        )?;
         let model_load_ms = t_start.elapsed().as_secs_f64() * 1000.0;
 
         Ok(Self {
             spec,
-            session,
+            session: Some(session),
             _env: env,
             model_load_ms,
             refine: config.refine,
+            active_ep,
+            model_path,
+            threads: config.threads,
         })
+    }
+
+    /// Returns the active execution provider bound to the session.
+    #[must_use]
+    pub fn execution_provider(&self) -> ActiveExecutionProvider {
+        self.active_ep
     }
 
     /// Processes an image from a file path with optional early downscaling, returning the transparent cutout, warnings, and timings.
@@ -169,26 +193,93 @@ impl Remover {
         })?;
         let preprocess_ms = t_pre.elapsed().as_secs_f64() * 1000.0;
 
-        // 2. Run inference
-        let t_inf = Instant::now();
-        let outputs = self
-            .session
-            .run(ort::inputs![self.spec.input_name => tensor_val])
-            .map_err(|e| CoreError::InferenceSession(format!("Inference run failed: {e}")))?;
+        // 2. Run inference with automatic fallback to CPU if hardware execution fails
+        let (raw_mask, inference_ms) = if self.active_ep != ActiveExecutionProvider::Cpu {
+            let t_inf = Instant::now();
+            let mut hardware_err = None;
+            let mut result_mask = None;
 
-        let (_shape, raw_slice) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
-            CoreError::TensorExtraction(format!("Failed to extract output tensor: {e}"))
-        })?;
-        let inference_ms = t_inf.elapsed().as_secs_f64() * 1000.0;
+            {
+                let sess = self.session.as_mut().expect("Session must be active");
+                match sess.run(ort::inputs![self.spec.input_name => tensor_val]) {
+                    Ok(outputs) => {
+                        let (_shape, raw_slice) =
+                            outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+                                CoreError::TensorExtraction(format!(
+                                    "Failed to extract output tensor: {e}"
+                                ))
+                            })?;
+                        result_mask = Some(pipeline::postprocess_mask(
+                            raw_slice, self.spec, orig_w, orig_h,
+                        )?);
+                    }
+                    Err(e) => {
+                        hardware_err = Some(e);
+                    }
+                }
+            }
 
-        // 3. Postprocess raw logits into probability mask
+            if let Some(e) = hardware_err {
+                eprintln!(
+                    "Warning: Inference execution failed on {} ({e}); falling back to CPU session...",
+                    self.active_ep
+                );
+                // Drop the old hardware session first to free all VRAM/RAM buffers!
+                self.session = None;
+
+                let cpu_session =
+                    session::create_session(&self._env, &self.model_path, self.threads)?;
+                self.session = Some(cpu_session);
+                self.active_ep = ActiveExecutionProvider::Cpu;
+
+                let retry_tensor = pipeline::preprocess_tensor(img, self.spec);
+                let retry_tensor_val = Tensor::from_array(retry_tensor).map_err(|e| {
+                    CoreError::InferenceSession(format!("Failed to reconstruct input tensor: {e}"))
+                })?;
+
+                let t_retry = Instant::now();
+                let sess = self.session.as_mut().unwrap();
+                let fallback_outputs = sess
+                    .run(ort::inputs![self.spec.input_name => retry_tensor_val])
+                    .map_err(|e| {
+                        CoreError::InferenceSession(format!("CPU fallback inference failed: {e}"))
+                    })?;
+
+                let (_shape, raw_slice) =
+                    fallback_outputs[0]
+                        .try_extract_tensor::<f32>()
+                        .map_err(|e| {
+                            CoreError::TensorExtraction(format!(
+                                "Failed to extract output tensor: {e}"
+                            ))
+                        })?;
+                let mask = pipeline::postprocess_mask(raw_slice, self.spec, orig_w, orig_h)?;
+                (mask, t_retry.elapsed().as_secs_f64() * 1000.0)
+            } else {
+                (
+                    result_mask.expect("Mask must be present on success"),
+                    t_inf.elapsed().as_secs_f64() * 1000.0,
+                )
+            }
+        } else {
+            let t_inf = Instant::now();
+            let sess = self.session.as_mut().expect("Session must be active");
+            let outputs = sess
+                .run(ort::inputs![self.spec.input_name => tensor_val])
+                .map_err(|e| CoreError::InferenceSession(format!("Inference run failed: {e}")))?;
+
+            let (_shape, raw_slice) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+                CoreError::TensorExtraction(format!("Failed to extract output tensor: {e}"))
+            })?;
+            let mask = pipeline::postprocess_mask(raw_slice, self.spec, orig_w, orig_h)?;
+            (mask, t_inf.elapsed().as_secs_f64() * 1000.0)
+        };
+
+        // 3. Refine mask (Phase 1D: Guided filter & selective transition feathering)
         let t_post = Instant::now();
-        let raw_mask = pipeline::postprocess_mask(raw_slice, self.spec, orig_w, orig_h)?;
-
-        // 4. Refine mask (Phase 1D: Guided filter & selective transition feathering)
         let mask = pipeline::refine_mask(raw_mask, img, &self.refine);
 
-        // 5. Apply mask as alpha with defringing
+        // 4. Apply mask as alpha with defringing
         let image = pipeline::apply_mask_with_options(img, &mask, self.refine.enable_defringing);
         let postprocess_ms = t_post.elapsed().as_secs_f64() * 1000.0;
 
