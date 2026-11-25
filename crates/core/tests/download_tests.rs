@@ -26,9 +26,10 @@ fn test_manifest_specifications() {
         assert!(!spec.license.is_empty());
         assert!(!spec.source_urls.is_empty());
 
-        // First URL is the verified upstream HuggingFace export; second is the project mirror URL
-        assert!(spec.source_urls[0].starts_with("https://huggingface.co/"));
-        assert!(spec.source_urls[1].starts_with("https://"));
+        // First URL is the project GitHub Release asset; second is the verified HuggingFace fallback mirror
+        assert!(spec.source_urls[0]
+            .starts_with("https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/"));
+        assert!(spec.source_urls[1].starts_with("https://huggingface.co/"));
     }
 
     assert_eq!(SPEC_QUALITY.expected_size, 191_877_254);

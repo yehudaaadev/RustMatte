@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Made `huggingface.co` the primary model download source (`models-v1` GitHub Release assets currently return `404`), keeping release assets as secondary mirror (`D-031`).
+- Published pinned ONNX weights (`birefnet_lite_512.onnx` and `u2netp.onnx`) to GitHub Release `models-v1` (verified public `200 OK` and SHA-256) with `huggingface.co` retained as automatic fallback (`D-031`).
 - Migrated saved `"auto"` device settings to `"cpu"` on load and replaced `#device-select` with a read-only localized CPU processing status line (`D-030`, `D-031`).
 - Moved the release `custom-protocol` `compile_error!` guard from `lib.rs` to `crates/app/src-tauri/src/main.rs` so `cargo test --release --workspace` succeeds while `cargo build --release` still blocks `devUrl` release binaries (`D-031`).
 - Fixed `.github/workflows/release.yml` macOS binary lookup (`*/Contents/MacOS/*` for `RustMatte.app/Contents/MacOS/RustMatte`) and updated Linux release builds to `ubuntu-24.04` (`glibc 2.39+` required by `ort` prebuilt static archives; `D-031`).

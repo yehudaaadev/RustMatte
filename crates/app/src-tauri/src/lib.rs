@@ -233,12 +233,12 @@ fn tier_status_from_spec(tier: ModelTier, caveat: Option<String>) -> ModelTierSt
         .source_urls
         .first()
         .map(|u| extract_source_host(u))
-        .unwrap_or_else(|| "huggingface.co".to_string());
+        .unwrap_or_else(|| "github.com".to_string());
     let fallback_host = spec
         .source_urls
         .get(1)
         .map(|u| extract_source_host(u))
-        .unwrap_or_else(|| "github.com".to_string());
+        .unwrap_or_else(|| "huggingface.co".to_string());
 
     ModelTierStatus {
         tier: match tier {
