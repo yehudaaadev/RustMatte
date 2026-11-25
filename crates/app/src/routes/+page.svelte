@@ -1,995 +1,2012 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
+  import { onDestroy, onMount } from "svelte";
+  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { open, save } from "@tauri-apps/plugin-dialog";
+  import { dictionaries, type Lang } from "$lib/i18n";
+  import { mapTechnicalError, type FriendlyError } from "$lib/errors";
+  import {
+    applyProgressEvent,
+    clearQueue as clearQueueState,
+    createInitialQueueState,
+    enqueuePaths,
+    failModelDownload,
+    finishJob,
+    markModelMissing,
+    selectAdjacent,
+    setDownloadProgress,
+    setJobPhase,
+    startJob,
+    startModelDownload,
+    summarizeQueue,
+    type FinishedPayload,
+    type ProgressPayload,
+  } from "$lib/queue";
 
-  // Internationalization dictionaries
-  const i18n = {
-    en: {
-      title: "RustMatte",
-      subtitle: "Offline AI Background Remover",
-      offlineBadge: "100% Offline & Private",
-      dropTitle: "Drag and drop an image here",
-      dropSubtitle: "Supports JPG, JPEG, PNG, WebP, BMP",
-      chooseFile: "Browse File",
-      tierLabel: "Model Tier",
-      tierQuality: "Quality (BiRefNet Lite 512)",
-      tierFast: "Fast (U-2-Netp Preview)",
-      tierFastCaveat: "Best for people and products on clean backgrounds.",
-      deviceLabel: "Execution Device",
-      maxSideLabel: "Output Resolution",
-      maxSideOriginal: "Original Size (Full Resolution)",
-      refineLabel: "Edge Refinement & Defringing",
-      processBtn: "Remove Background",
-      processing: "Processing neural inference...",
-      saveBtn: "Save Transparent PNG",
-      newImageBtn: "Process Another Image",
-      original: "Original",
-      cutout: "Removed Background",
-      statsTitle: "Execution Metrics",
-      device: "Active Device",
-      dimensions: "Dimensions",
-      totalTime: "Total Time",
-      inferenceTime: "Inference Time",
-      modelNotCached: "Model not downloaded yet",
-      downloadModel: "Download Model",
-      downloading: "Downloading model...",
-      previewBg: "Preview Background",
-      bgTransparent: "Transparent",
-      bgWhite: "White",
-      bgBlack: "Black",
-      bgCustom: "Custom",
-      queueTitle: "Batch Queue",
-      clearQueue: "Clear Queue",
-    },
-    id: {
-      title: "RustMatte",
-      subtitle: "Penghapus Latar Belakang AI Offline",
-      offlineBadge: "100% Offline & Privasi Terjaga",
-      dropTitle: "Tarik dan letakkan gambar di sini",
-      dropSubtitle: "Mendukung JPG, JPEG, PNG, WebP, BMP",
-      chooseFile: "Pilih Berkas",
-      tierLabel: "Tingkat Model",
-      tierQuality: "Quality (BiRefNet Lite 512)",
-      tierFast: "Fast (U-2-Netp Pratinjau)",
-      tierFastCaveat: "Terbaik untuk objek dan orang dengan latar belakang bersih.",
-      deviceLabel: "Perangkat Inferensi",
-      maxSideLabel: "Resolusi Output",
-      maxSideOriginal: "Ukuran Asli (Resolusi Penuh)",
-      refineLabel: "Penghalus Tepi & Defringing",
-      processBtn: "Hapus Latar Belakang",
-      processing: "Memproses inferensi neural...",
-      saveBtn: "Simpan PNG Transparan",
-      newImageBtn: "Proses Gambar Lain",
-      original: "Asli",
-      cutout: "Tanpa Latar Belakang",
-      statsTitle: "Metrik Eksekusi",
-      device: "Perangkat Aktif",
-      dimensions: "Dimensi",
-      totalTime: "Waktu Total",
-      inferenceTime: "Waktu Inferensi",
-      modelNotCached: "Model belum terunduh",
-      downloadModel: "Unduh Model",
-      downloading: "Mengunduh model...",
-      previewBg: "Latar Belakang Pratinjau",
-      bgTransparent: "Transparan",
-      bgWhite: "Putih",
-      bgBlack: "Hitam",
-      bgCustom: "Kustom",
-      queueTitle: "Antrean Batch",
-      clearQueue: "Hapus Antrean",
-    },
-  };
+  type ThemeMode = "system" | "light" | "dark";
+  type RefineLevel = "none" | "light" | "standard";
+  type BgMode = "transparent" | "solid";
 
-  type Lang = "en" | "id";
-  let lang = $state<Lang>("en");
-  let t = $derived(i18n[lang]);
-  let isDark = $state(true);
-
-  // Settings
-  let selectedTier = $state("quality");
-  let selectedDevice = $state("auto");
-  let maxSide = $state<number | null>(null);
-  let enableRefine = $state(true);
-  let previewBgColor = $state("transparent");
-  let customBgHex = $state("#ffffff");
-
-  // Model cache state
-  let qualityCached = $state(false);
-  let fastCached = $state(false);
-  let isDownloading = $state(false);
-  let downloadProgress = $state(0);
-
-  // Active processing state
-  let currentFilePath = $state<string | null>(null);
-  let isProcessing = $state(false);
-  let errorMessage = $state<string | null>(null);
-
-  // Result state
-  let originalUrl = $state<string | null>(null);
-  let cutoutUrl = $state<string | null>(null);
-  let imgWidth = $state(0);
-  let imgHeight = $state(0);
-  let activeDevice = $state("");
-  let totalDurationMs = $state(0);
-  let inferenceDurationMs = $state(0);
-  let warningMessages = $state<string[]>([]);
-
-  // Slider state
-  let sliderPos = $state(50); // percentage 0-100
-  let isDraggingSlider = $state(false);
-
-  // Queue state
-  interface QueueItem {
-    id: string;
-    path: string;
+  interface ModelTierInfo {
+    tier: string;
     name: string;
-    status: "pending" | "processing" | "done" | "error";
-    durationMs?: number;
-    errorMsg?: string;
+    filename: string;
+    cached: boolean;
+    expected_size_mb: number;
+    license: string;
+    primary_host: string;
+    fallback_host: string;
+    caveat: string | null;
   }
-  let queue = $state<QueueItem[]>([]);
+
+  interface AboutInfo {
+    version: string;
+    license: string;
+    network_use: string;
+    models_markdown: string;
+    third_party_licenses_markdown: string;
+  }
+
+  // Settings state
+  let lang = $state<Lang>("en");
+  let themeMode = $state<ThemeMode>("system");
+  let systemPrefersDark = $state(true);
+  let selectedTier = $state<"quality" | "fast">("quality");
+  let selectedDevice = $state("auto");
+  let refineLevel = $state<RefineLevel>("standard");
+  let maxSide = $state<number | null>(null);
+  let backgroundMode = $state<BgMode>("transparent");
+  let backgroundHex = $state("#ffffff");
+  let outputFolder = $state<string | null>(null);
+  let neverUseNetwork = $state(false);
+  let settingsLoaded = $state(false);
+
+  let t = $derived(dictionaries[lang]);
+  let resolvedDark = $derived(
+    themeMode === "system" ? systemPrefersDark : themeMode === "dark"
+  );
+
+  // Model & setup state
+  let qualityModel = $state<ModelTierInfo | null>(null);
+  let fastModel = $state<ModelTierInfo | null>(null);
+  let showFirstRunModal = $state(false);
+  let setupTier = $state<"quality" | "fast">("quality");
+  let downloadError = $state<FriendlyError | null>(null);
+
+  let activeModelInfo = $derived(
+    selectedTier === "fast" ? fastModel : qualityModel
+  );
+  let setupModelInfo = $derived(
+    setupTier === "fast" ? fastModel : qualityModel
+  );
+  let isActiveModelReady = $derived(activeModelInfo?.cached ?? false);
+
+  // About & Diagnostics modal state
+  let showAboutModal = $state(false);
+  let aboutInfo = $state<AboutInfo | null>(null);
+  let diagnosticsCopied = $state(false);
+
+  // Queue & UI state
+  let qState = $state(createInitialQueueState());
+  let summary = $derived(summarizeQueue(qState));
+  let selectedItem = $derived(
+    qState.selectedIndex >= 0 && qState.selectedIndex < qState.items.length
+      ? qState.items[qState.selectedIndex]
+      : null
+  );
+  let isBusy = $derived(
+    qState.phase === "loading_model" || qState.phase === "processing"
+  );
+  let isDownloading = $derived(qState.phase === "downloading_model");
+
+  let isDragOver = $state(false);
+  let activeError = $state<FriendlyError | null>(null);
+  let statusNotice = $state<string | null>(null);
+
+  // Comparison slider, zoom & pan state
+  let sliderPos = $state(50);
+  let isDraggingSlider = $state(false);
+  let zoom = $state(1);
+  let panX = $state(0);
+  let panY = $state(0);
+  let isPanning = $state(false);
+  let panStartX = 0;
+  let panStartY = 0;
+
+  // Virtualized thumbnail queue state (smooth for hundreds of items)
+  const ROW_HEIGHT = 62;
+  let queueScrollTop = $state(0);
+  let queueViewportHeight = $state(420);
+  let visibleStart = $derived(
+    Math.max(0, Math.floor(queueScrollTop / ROW_HEIGHT) - 3)
+  );
+  let visibleEnd = $derived(
+    Math.min(
+      qState.items.length,
+      Math.ceil((queueScrollTop + queueViewportHeight) / ROW_HEIGHT) + 4
+    )
+  );
+  let visibleItems = $derived(
+    qState.items.slice(visibleStart, visibleEnd).map((item, offset) => ({
+      item,
+      index: visibleStart + offset,
+    }))
+  );
+
+  let originalPreviewUrl = $derived(
+    selectedItem?.originalPreviewPath
+      ? convertFileSrc(selectedItem.originalPreviewPath)
+      : null
+  );
+  let cutoutPreviewUrl = $derived(
+    selectedItem?.cutoutPreviewPath
+      ? convertFileSrc(selectedItem.cutoutPreviewPath)
+      : null
+  );
+
+  let unlistenFns: UnlistenFn[] = [];
 
   onMount(async () => {
-    await checkModelStatus();
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    systemPrefersDark = mq.matches;
+    const onSchemeChange = (e: MediaQueryListEvent) => {
+      systemPrefersDark = e.matches;
+    };
+    mq.addEventListener("change", onSchemeChange);
+    unlistenFns.push(() => mq.removeEventListener("change", onSchemeChange));
 
-    await listen("download_progress", (event: any) => {
-      if (event.payload) {
-        downloadProgress = event.payload.percentage;
+    try {
+      const saved: any = await invoke("get_settings");
+      if (saved) {
+        lang = saved.language === "id" ? "id" : "en";
+        themeMode =
+          saved.theme === "light" || saved.theme === "dark"
+            ? saved.theme
+            : "system";
+        selectedTier = saved.tier === "fast" ? "fast" : "quality";
+        selectedDevice = saved.device || "auto";
+        refineLevel =
+          saved.refine_level === "none" || saved.refine_level === "light"
+            ? saved.refine_level
+            : "standard";
+        maxSide = saved.max_side ?? null;
+        backgroundMode =
+          saved.background_mode === "solid" ? "solid" : "transparent";
+        backgroundHex = saved.background_hex || "#ffffff";
+        outputFolder = saved.output_folder ?? null;
+        neverUseNetwork = Boolean(saved.never_use_network);
       }
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    } finally {
+      settingsLoaded = true;
+    }
+
+    await refreshModelStatus();
+    if (!isActiveModelReady) {
+      setupTier = selectedTier;
+      qState = markModelMissing(qState);
+    }
+
+    unlistenFns.push(
+      await listen("download_progress", (event: any) => {
+        if (event.payload) {
+          qState = setDownloadProgress(qState, event.payload.percentage);
+        }
+      })
+    );
+
+    unlistenFns.push(
+      await listen("job_status", (event: any) => {
+        if (!event.payload) return;
+        if (event.payload.phase === "loading_model") {
+          qState = setJobPhase(qState, "loading_model");
+        } else if (event.payload.phase === "processing") {
+          qState = setJobPhase(qState, "processing");
+        }
+      })
+    );
+
+    unlistenFns.push(
+      await listen("job_progress", (event: any) => {
+        const p = event.payload as ProgressPayload | undefined;
+        if (!p) return;
+        qState = applyProgressEvent(qState, p);
+        if (p.status === "failed" && p.error) {
+          activeError = mapTechnicalError(p.error, t);
+        }
+        if (p.cutout_preview_path) {
+          resetViewTransform();
+        }
+      })
+    );
+
+    unlistenFns.push(
+      await listen("job_finished", (event: any) => {
+        const p = event.payload as FinishedPayload | undefined;
+        if (!p) return;
+        qState = finishJob(qState, p);
+        if (p.cancelled) {
+          statusNotice = t.stateCancelledSummary;
+        } else if (p.failed > 0) {
+          statusNotice = t.statePartialSummary;
+        } else {
+          statusNotice = `${t.stateDoneSummary} (${p.processed}/${p.processed + p.failed} in ${(p.total_ms / 1000).toFixed(2)}s)`;
+        }
+      })
+    );
+
+    const webview = getCurrentWebview();
+    unlistenFns.push(
+      await webview.onDragDropEvent(async (event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          isDragOver = true;
+        } else if (payload.type === "leave") {
+          isDragOver = false;
+        } else if (payload.type === "drop") {
+          isDragOver = false;
+          if (payload.paths && payload.paths.length > 0) {
+            await addPathsToQueue(payload.paths);
+          }
+        }
+      })
+    );
+  });
+
+  onDestroy(() => {
+    for (const fn of unlistenFns) {
+      fn();
+    }
+  });
+
+  $effect(() => {
+    if (!settingsLoaded) return;
+    const payload = {
+      language: lang,
+      theme: themeMode,
+      tier: selectedTier,
+      device: selectedDevice,
+      refine_level: refineLevel,
+      output_folder: outputFolder,
+      max_side: maxSide,
+      background_mode: backgroundMode,
+      background_hex: backgroundHex,
+      never_use_network: neverUseNetwork,
+    };
+    invoke("set_settings", { newSettings: payload }).catch((e) => {
+      console.error("Failed to save settings:", e);
     });
   });
 
-  async function checkModelStatus() {
+  async function refreshModelStatus() {
     try {
-      const res: any = await invoke("get_model_cache_status");
-      qualityCached = res.quality_cached;
-      fastCached = res.fast_cached;
-    } catch (e: any) {
-      console.error("Failed to check model status:", e);
+      const res: any = await invoke("get_models_status");
+      qualityModel = res.quality;
+      fastModel = res.fast;
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
     }
   }
 
-  async function handleDownloadModel(tier: string) {
-    isDownloading = true;
-    downloadProgress = 0;
-    errorMessage = null;
+  async function addPathsToQueue(rawPaths: string[]) {
+    activeError = null;
+    statusNotice = null;
     try {
-      await invoke("download_model_tier", { tier });
-      await checkModelStatus();
-    } catch (e: any) {
-      errorMessage = String(e);
-    } finally {
-      isDownloading = false;
+      const expanded: {
+        valid_paths: string[];
+        rejected: { path: string; name: string; reason: string }[];
+      } = await invoke("expand_inputs", { paths: rawPaths });
+      qState = enqueuePaths(qState, expanded.valid_paths, expanded.rejected);
+      if (expanded.valid_paths.length === 0 && expanded.rejected.length > 0) {
+        activeError = mapTechnicalError(expanded.rejected[0].reason, t);
+      }
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
     }
   }
 
-  async function onFileSelected(e: Event) {
-    const target = e.target as HTMLInputElement;
-    if (target.files && target.files.length > 0) {
-      const files = Array.from(target.files);
-      if (files.length === 1) {
-        const file = files[0];
-        // @ts-ignore
-        const fullPath = file.path || file.name;
-        currentFilePath = fullPath;
-        await processSingle(fullPath);
-      } else {
-        // Multi-file batch queue
-        for (const file of files) {
-          // @ts-ignore
-          const fullPath = file.path || file.name;
-          queue.push({
-            id: Math.random().toString(36).substring(2, 9),
-            path: fullPath,
-            name: file.name,
-            status: "pending",
-          });
+  async function browsePhotos() {
+    const selected = await open({
+      multiple: true,
+      directory: false,
+      filters: [
+        {
+          name: "Supported Images",
+          extensions: ["jpg", "jpeg", "png", "webp", "bmp"],
+        },
+      ],
+    });
+    if (!selected) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (paths.length > 0) {
+      await addPathsToQueue(paths);
+    }
+  }
+
+  async function browseFolder() {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+    });
+    if (typeof selected === "string" && selected.trim().length > 0) {
+      await addPathsToQueue([selected]);
+    }
+  }
+
+  async function chooseOutputFolder() {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+    });
+    if (typeof selected === "string" && selected.trim().length > 0) {
+      outputFolder = selected;
+    }
+  }
+
+  function openModelSetup(tier: "quality" | "fast") {
+    setupTier = tier;
+    downloadError = null;
+    showFirstRunModal = true;
+  }
+
+  async function startDownloadFromModal() {
+    if (neverUseNetwork) {
+      downloadError = mapTechnicalError("Never use the network", t);
+      return;
+    }
+    downloadError = null;
+    qState = startModelDownload(qState);
+    try {
+      await invoke("download_model", { tier: setupTier, consent: true });
+      await refreshModelStatus();
+      showFirstRunModal = false;
+      qState = {
+        ...qState,
+        phase: qState.items.length > 0 ? "done" : "empty",
+      };
+    } catch (e) {
+      const msg = String(e);
+      qState = failModelDownload(qState, msg);
+      downloadError = mapTechnicalError(msg, t);
+    }
+  }
+
+  async function importLocalModelFile() {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "ONNX Model", extensions: ["onnx"] }],
+    });
+    if (typeof selected !== "string" || !selected.trim()) return;
+    downloadError = null;
+    try {
+      await invoke("import_model_file", {
+        tier: setupTier,
+        filePath: selected,
+      });
+      await refreshModelStatus();
+      showFirstRunModal = false;
+      qState = {
+        ...qState,
+        phase: qState.items.length > 0 ? "done" : "empty",
+      };
+    } catch (e) {
+      downloadError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function runRemoveBackground() {
+    if (isBusy || qState.items.length === 0) return;
+    await refreshModelStatus();
+    if (!isActiveModelReady) {
+      openModelSetup(selectedTier);
+      return;
+    }
+
+    activeError = null;
+    statusNotice = null;
+    const paths = qState.items.map((item) => item.path);
+    qState = startJob(qState, true);
+
+    try {
+      await invoke("process_images", {
+        paths,
+        options: {
+          tier: selectedTier,
+          device: selectedDevice,
+          max_side: maxSide,
+          refine_level: refineLevel,
+          output_folder: outputFolder,
+          background_hex: backgroundMode === "solid" ? backgroundHex : null,
+        },
+      });
+    } catch (e) {
+      const msg = String(e);
+      activeError = mapTechnicalError(msg, t);
+      qState = finishJob(qState, {
+        processed: 0,
+        failed: qState.items.length,
+        cancelled: false,
+        total_ms: 0,
+      });
+    }
+  }
+
+  async function cancelCurrentJob() {
+    try {
+      await invoke("cancel_job");
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function saveSelectedCutout() {
+    if (!selectedItem?.fullCutoutPath) return;
+    activeError = null;
+    try {
+      const stem = selectedItem.name.replace(/\.[^.]+$/, "");
+      const dest = await save({
+        defaultPath: `${stem}_cutout.png`,
+        filters: [{ name: "PNG Image", extensions: ["png"] }],
+      });
+      if (!dest) return;
+
+      const savedPath: string = await invoke("save_cutout_png", {
+        sourceCutoutPath: selectedItem.fullCutoutPath,
+        destinationPath: dest,
+        inputPaths: [selectedItem.path],
+        backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
+      });
+      statusNotice = `${t.savedSingleNotice}: ${savedPath}`;
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function saveAllCutouts() {
+    const readyItems = qState.items.filter(
+      (i) => (i.status === "done" || i.status === "warning") && i.fullCutoutPath
+    );
+    if (readyItems.length === 0) return;
+
+    let targetDir = outputFolder ?? qState.outputDir;
+    if (!targetDir) {
+      const picked = await open({ directory: true, multiple: false });
+      if (typeof picked !== "string" || !picked.trim()) return;
+      targetDir = picked;
+    }
+
+    activeError = null;
+    try {
+      const res: { saved_count: number; output_dir: string } = await invoke(
+        "save_all_cutouts",
+        {
+          items: readyItems.map((i) => ({
+            source_cutout_path: i.fullCutoutPath,
+            input_path: i.path,
+          })),
+          outputDir: targetDir,
+          backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
         }
+      );
+      qState = { ...qState, outputDir: res.output_dir };
+      statusNotice = `${t.savedAllNotice}: ${res.output_dir} (${res.saved_count})`;
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function openOutputDir() {
+    const dir = qState.outputDir ?? outputFolder;
+    if (!dir) return;
+    try {
+      await invoke("open_output_folder", { path: dir });
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function openAbout() {
+    showAboutModal = true;
+    diagnosticsCopied = false;
+    if (!aboutInfo) {
+      try {
+        aboutInfo = await invoke("get_about_info");
+      } catch (e) {
+        activeError = mapTechnicalError(String(e), t);
       }
     }
   }
 
-  async function processSingle(path: string) {
-    isProcessing = true;
-    errorMessage = null;
-    originalUrl = null;
-    cutoutUrl = null;
-
+  async function copyDiagnostics() {
     try {
-      const res: any = await invoke("process_single_image", {
-        req: {
-          input_path: path,
-          tier: selectedTier,
-          device: selectedDevice,
-          max_side: maxSide,
-          no_refine: !enableRefine,
-        },
-      });
+      const info: {
+        version: string;
+        os: string;
+        arch: string;
+        cpu_cores: number;
+        total_ram_mb: number | null;
+        available_ram_mb: number | null;
+        tier: string;
+      } = await invoke("get_diagnostic_info", { tier: selectedTier });
 
-      originalUrl = res.original_data_url;
-      cutoutUrl = res.cutout_data_url;
-      imgWidth = res.width;
-      imgHeight = res.height;
-      activeDevice = res.device;
-      totalDurationMs = res.total_ms;
-      inferenceDurationMs = res.inference_ms;
-      warningMessages = res.warnings || [];
-      sliderPos = 50;
-    } catch (e: any) {
-      errorMessage = String(e);
-    } finally {
-      isProcessing = false;
+      const text = [
+        `RustMatte v${info.version}`,
+        `OS: ${info.os} (${info.arch})`,
+        `CPU cores: ${info.cpu_cores}`,
+        `RAM: ${info.total_ram_mb ?? "unknown"} MB total / ${info.available_ram_mb ?? "unknown"} MB available`,
+        `Selected tier: ${info.tier}`,
+      ].join("\n");
+
+      await navigator.clipboard.writeText(text);
+      diagnosticsCopied = true;
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
     }
   }
 
-  async function saveCutout() {
-    if (!cutoutUrl) return;
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const defaultDest = `rustmatte_${timestamp}.png`;
-      await invoke("save_cutout_png", {
-        dataUrl: cutoutUrl,
-        destinationPath: defaultDest,
-      });
-      alert(`Cutout saved to: ${defaultDest}`);
-    } catch (e: any) {
-      alert(`Save failed: ${e}`);
+  function statusLabel(status: string): string {
+    switch (status) {
+      case "waiting":
+        return t.statusWaiting;
+      case "processing":
+        return t.statusProcessing;
+      case "done":
+        return t.statusDone;
+      case "warning":
+        return t.statusWarning;
+      default:
+        return t.statusFailed;
     }
   }
 
-  function handleSliderMouseMove(e: MouseEvent) {
-    if (!isDraggingSlider) return;
-    const container = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - container.left, container.width));
-    sliderPos = (x / container.width) * 100;
+  function resetViewTransform() {
+    sliderPos = 50;
+    zoom = 1;
+    panX = 0;
+    panY = 0;
+  }
+
+  function adjustZoom(delta: number) {
+    zoom = Math.max(0.5, Math.min(4, Number((zoom + delta).toFixed(2))));
+    if (zoom <= 1) {
+      panX = 0;
+      panY = 0;
+    }
+  }
+
+  function handleCanvasWheel(e: WheelEvent) {
+    if (!cutoutPreviewUrl) return;
+    e.preventDefault();
+    adjustZoom(e.deltaY < 0 ? 0.2 : -0.2);
+  }
+
+  function handleCanvasPointerMove(e: MouseEvent) {
+    if (isDraggingSlider) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      sliderPos = (x / rect.width) * 100;
+      return;
+    }
+    if (isPanning && zoom > 1) {
+      panX += e.clientX - panStartX;
+      panY += e.clientY - panStartY;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+    }
+  }
+
+  function bindViewportEvents(node: HTMLElement) {
+    const onWheel = (e: WheelEvent) => handleCanvasWheel(e);
+    const onMouseDown = (e: MouseEvent) => {
+      if (zoom > 1 && !isDraggingSlider) {
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+      }
+    };
+    const onMouseMove = (e: MouseEvent) => handleCanvasPointerMove(e);
+    const stopDrag = () => {
+      isDraggingSlider = false;
+      isPanning = false;
+    };
+
+    node.addEventListener("wheel", onWheel, { passive: false });
+    node.addEventListener("mousedown", onMouseDown);
+    node.addEventListener("mousemove", onMouseMove);
+    node.addEventListener("mouseup", stopDrag);
+    node.addEventListener("mouseleave", stopDrag);
+
+    return {
+      destroy() {
+        node.removeEventListener("wheel", onWheel);
+        node.removeEventListener("mousedown", onMouseDown);
+        node.removeEventListener("mousemove", onMouseMove);
+        node.removeEventListener("mouseup", stopDrag);
+        node.removeEventListener("mouseleave", stopDrag);
+      },
+    };
+  }
+
+  function handleSliderKeyDown(e: KeyboardEvent) {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      sliderPos = Math.max(0, sliderPos - 5);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      sliderPos = Math.min(100, sliderPos + 5);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      sliderPos = 0;
+    } else if (e.key === "End") {
+      e.preventDefault();
+      sliderPos = 100;
+    } else if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      adjustZoom(0.25);
+    } else if (e.key === "-") {
+      e.preventDefault();
+      adjustZoom(-0.25);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      resetViewTransform();
+    } else if (zoom > 1 && e.shiftKey) {
+      const step = 24;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        panY += step;
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        panY -= step;
+      }
+    }
+  }
+
+  function handleGlobalKeyDown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      if (showAboutModal) {
+        showAboutModal = false;
+        return;
+      }
+      if (showFirstRunModal && !isDownloading) {
+        showFirstRunModal = false;
+        return;
+      }
+      if (isBusy) {
+        cancelCurrentJob();
+        return;
+      }
+    }
+
+    if (showAboutModal || showFirstRunModal) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      browsePhotos();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      runRemoveBackground();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      saveAllCutouts();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      saveSelectedCutout();
+      return;
+    }
+
+    const activeEl = document.activeElement;
+    const isInput =
+      activeEl instanceof HTMLInputElement ||
+      activeEl instanceof HTMLSelectElement ||
+      activeEl instanceof HTMLTextAreaElement ||
+      activeEl?.getAttribute("role") === "slider";
+
+    if (!isInput && qState.items.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        qState = selectAdjacent(qState, 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        qState = selectAdjacent(qState, -1);
+      }
+    }
   }
 </script>
 
-<main class={isDark ? "theme-dark" : "theme-light"}>
-  <!-- App Header -->
+<svelte:window onkeydown={handleGlobalKeyDown} />
+
+<main class={resolvedDark ? "theme-dark" : "theme-light"}>
   <header class="app-header">
     <div class="brand">
-      <h1 class="brand-title">{t.title}</h1>
-      <span class="brand-subtitle">{t.subtitle}</span>
+      <h1 class="brand-title">{t.appTitle}</h1>
+      <span class="brand-subtitle">{t.appSubtitle}</span>
+      <span class="badge-pill">{t.offlineBadge}</span>
+      {#if isActiveModelReady}
+        <span class="badge-pill ok">{t.modelReadyBadge}</span>
+      {:else}
+        <button class="badge-pill warn-btn" onclick={() => openModelSetup(selectedTier)}>
+          {t.modelMissingBadge}: {t.setupModelBtn}
+        </button>
+      {/if}
     </div>
 
     <div class="header-controls">
-      <span class="privacy-badge">{t.offlineBadge}</span>
+      <label class="sr-only" for="lang-select">{t.languageLabel}</label>
+      <select id="lang-select" bind:value={lang} aria-label={t.languageLabel}>
+        <option value="en">EN</option>
+        <option value="id">ID</option>
+      </select>
 
-      <button
-        class="icon-btn"
-        onclick={() => (lang = lang === "en" ? "id" : "en")}
-        aria-label="Toggle Language"
-      >
-        {lang.toUpperCase()}
-      </button>
+      <label class="sr-only" for="theme-select">{t.themeLabel}</label>
+      <select id="theme-select" bind:value={themeMode} aria-label={t.themeLabel}>
+        <option value="system">{t.themeSystem}</option>
+        <option value="light">{t.themeLight}</option>
+        <option value="dark">{t.themeDark}</option>
+      </select>
 
-      <button
-        class="icon-btn"
-        onclick={() => (isDark = !isDark)}
-        aria-label="Toggle Theme"
-      >
-        {isDark ? "Light" : "Dark"}
-      </button>
+      <button class="secondary-btn sm" onclick={openAbout}>{t.aboutBtn}</button>
     </div>
   </header>
 
   <div class="app-body">
-    <!-- Sidebar Controls -->
-    <aside class="sidebar">
-      <div class="control-group">
-        <label for="tier-select">{t.tierLabel}</label>
-        <select id="tier-select" bind:value={selectedTier}>
-          <option value="quality">{t.tierQuality}</option>
-          <option value="fast">{t.tierFast}</option>
-        </select>
-        {#if selectedTier === "fast"}
-          <span class="caveat-text">{t.tierFastCaveat}</span>
+    {#if qState.items.length === 0}
+      <!-- Empty Dropzone State -->
+      <section class="empty-stage" aria-label={t.dropTitle}>
+        <div class="dropzone-card {isDragOver ? 'drag-over' : ''}">
+          <h2>{t.dropTitle}</h2>
+          <p class="muted">{t.dropSubtitle}</p>
+          <div class="drop-actions">
+            <button class="primary-btn" onclick={browsePhotos}>{t.browsePhotos}</button>
+            <button class="secondary-btn" onclick={browseFolder}>{t.browseFolder}</button>
+          </div>
+          <p class="shortcut-note">{t.shortcutsHint}</p>
+        </div>
+
+        {#if activeError}
+          <div class="banner error" role="alert">
+            <div class="banner-body">
+              <strong>{activeError.title}</strong>
+              <p>{activeError.fix}</p>
+              <details>
+                <summary>{t.errorDetailsLabel}</summary>
+                <code>{activeError.details}</code>
+              </details>
+            </div>
+            <button class="text-btn" onclick={() => (activeError = null)}>{t.dismissBtn}</button>
+          </div>
         {/if}
 
-        <!-- Cache check & download -->
-        {#if selectedTier === "quality" && !qualityCached}
-          <div class="model-status-card">
-            <span>{t.modelNotCached} (183 MB)</span>
+        {#if qState.rejectedItems.length > 0}
+          <div class="banner warning" role="status">
+            <div class="banner-body">
+              <strong>{t.rejectedFilesBanner} ({qState.rejectedItems.length})</strong>
+              <ul class="compact-list">
+                {#each qState.rejectedItems.slice(0, 5) as rej}
+                  <li>{rej.name}: {rej.reason}</li>
+                {/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
+      </section>
+    {:else}
+      <!-- Left Thumbnail Queue (Windowed Rendering) -->
+      <aside class="queue-sidebar" aria-label={t.queueTitle}>
+        <div class="panel-header">
+          <h2>{t.queueTitle} ({qState.items.length})</h2>
+          <div class="panel-header-actions">
+            <button class="text-btn" onclick={browsePhotos} disabled={isBusy}>{t.addMoreBtn}</button>
             <button
-              class="primary-btn sm"
-              disabled={isDownloading}
-              onclick={() => handleDownloadModel("quality")}
+              class="text-btn"
+              onclick={() => (qState = clearQueueState(qState))}
+              disabled={isBusy}
             >
-              {isDownloading ? `${t.downloading} ${downloadProgress}%` : t.downloadModel}
+              {t.clearQueue}
             </button>
           </div>
-        {:else if selectedTier === "fast" && !fastCached}
-          <div class="model-status-card">
-            <span>{t.modelNotCached} (4.4 MB)</span>
-            <button
-              class="primary-btn sm"
-              disabled={isDownloading}
-              onclick={() => handleDownloadModel("fast")}
-            >
-              {isDownloading ? `${t.downloading} ${downloadProgress}%` : t.downloadModel}
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <div class="control-group">
-        <label for="device-select">{t.deviceLabel}</label>
-        <select id="device-select" bind:value={selectedDevice}>
-          <option value="auto">Auto (GPU fallback CPU)</option>
-          <option value="directml">DirectML (DirectX 12 GPU)</option>
-          <option value="cpu">CPU (Multi-threaded)</option>
-        </select>
-      </div>
-
-      <div class="control-group">
-        <label for="max-side-select">{t.maxSideLabel}</label>
-        <select id="max-side-select" bind:value={maxSide}>
-          <option value={null}>{t.maxSideOriginal}</option>
-          <option value={2048}>Max 2048px</option>
-          <option value={1024}>Max 1024px (Fast Mode)</option>
-          <option value={512}>Max 512px</option>
-        </select>
-      </div>
-
-      <div class="control-group checkbox-group">
-        <label>
-          <input type="checkbox" bind:checked={enableRefine} />
-          {t.refineLabel}
-        </label>
-      </div>
-
-      <div class="control-group">
-        <span class="group-title">{t.previewBg}</span>
-        <div class="bg-options">
-          <button
-            class="chip {previewBgColor === 'transparent' ? 'active' : ''}"
-            onclick={() => (previewBgColor = 'transparent')}
-          >
-            {t.bgTransparent}
-          </button>
-          <button
-            class="chip {previewBgColor === 'white' ? 'active' : ''}"
-            onclick={() => (previewBgColor = 'white')}
-          >
-            {t.bgWhite}
-          </button>
-          <button
-            class="chip {previewBgColor === 'black' ? 'active' : ''}"
-            onclick={() => (previewBgColor = 'black')}
-          >
-            {t.bgBlack}
-          </button>
-          <button
-            class="chip {previewBgColor === 'custom' ? 'active' : ''}"
-            onclick={() => (previewBgColor = 'custom')}
-          >
-            {t.bgCustom}
-          </button>
         </div>
-        {#if previewBgColor === 'custom'}
-          <input type="color" bind:value={customBgHex} class="color-picker" />
-        {/if}
-      </div>
 
-      {#if cutoutUrl}
-        <div class="stats-panel">
-          <h3>{t.statsTitle}</h3>
-          <div class="stat-row">
-            <span>{t.device}:</span>
-            <strong>{activeDevice}</strong>
-          </div>
-          <div class="stat-row">
-            <span>{t.dimensions}:</span>
-            <span>{imgWidth} x {imgHeight} px</span>
-          </div>
-          <div class="stat-row">
-            <span>{t.inferenceTime}:</span>
-            <span>{inferenceDurationMs.toFixed(1)} ms</span>
-          </div>
-          <div class="stat-row">
-            <span>{t.totalTime}:</span>
-            <span>{totalDurationMs.toFixed(1)} ms</span>
-          </div>
-        </div>
-      {/if}
-    </aside>
-
-    <!-- Main Workspace Area -->
-    <section class="workspace">
-      {#if errorMessage}
-        <div class="alert-banner error">
-          <span>{errorMessage}</span>
-          <button onclick={() => (errorMessage = null)}>Dismiss</button>
-        </div>
-      {/if}
-
-      {#if warningMessages.length > 0}
-        <div class="alert-banner warning">
-          {#each warningMessages as w}
-            <span>{w}</span>
-          {/each}
-        </div>
-      {/if}
-
-      {#if isProcessing}
-        <div class="loading-container">
-          <div class="spinner"></div>
-          <p>{t.processing}</p>
-        </div>
-      {:else if cutoutUrl && originalUrl}
-        <!-- Before / After Slider -->
         <div
-          class="slider-viewport"
-          role="region"
-          aria-label="Before and after comparison slider"
-          onmousemove={handleSliderMouseMove}
-          onmouseup={() => (isDraggingSlider = false)}
-          onmouseleave={() => (isDraggingSlider = false)}
+          class="queue-scroll"
+          bind:clientHeight={queueViewportHeight}
+          onscroll={(e) => (queueScrollTop = (e.currentTarget as HTMLElement).scrollTop)}
         >
-          <!-- Background layer for transparent cutout -->
-          <div
-            class="preview-canvas"
-            style:background-color={previewBgColor === 'white'
-              ? '#ffffff'
-              : previewBgColor === 'black'
-              ? '#000000'
-              : previewBgColor === 'custom'
-              ? customBgHex
-              : 'transparent'}
-            class:checkerboard={previewBgColor === 'transparent'}
-          >
-            <!-- Cutout Image (Base) -->
-            <img src={cutoutUrl} alt="Background Removed" class="comparison-img" />
-
-            <!-- Original Image (Clipped Overlay) -->
+          <div style:height={`${qState.items.length * ROW_HEIGHT}px`} class="queue-spacer">
             <div
-              class="clipped-overlay"
-              style:clip-path={`polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`}
+              class="queue-window"
+              style:transform={`translateY(${visibleStart * ROW_HEIGHT}px)`}
             >
-              <img src={originalUrl} alt="Original" class="comparison-img" />
+              {#each visibleItems as { item, index } (item.path)}
+                {@const thumbPath = item.cutoutPreviewPath ?? item.originalPreviewPath}
+                <button
+                  type="button"
+                  class="queue-row {index === qState.selectedIndex ? 'selected' : ''}"
+                  onclick={() => {
+                    qState = { ...qState, selectedIndex: index };
+                    resetViewTransform();
+                  }}
+                >
+                  <div class="thumb-box">
+                    {#if thumbPath}
+                      <img src={convertFileSrc(thumbPath)} alt="" loading="lazy" />
+                    {:else}
+                      <span>IMG</span>
+                    {/if}
+                  </div>
+                  <div class="row-meta">
+                    <span class="row-name" title={item.name}>{item.name}</span>
+                    <span class="status-tag {item.status}">
+                      {statusLabel(item.status)}
+                      {#if item.timingMs}
+                        ({(item.timingMs / 1000).toFixed(2)}s)
+                      {/if}
+                    </span>
+                  </div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Workspace -->
+      <section class="center-stage {isDragOver ? 'drag-over' : ''}">
+        {#if isBusy}
+          <div class="progress-bar-box" role="status" aria-live="polite">
+            <div class="progress-text">
+              <span>
+                {qState.phase === "loading_model"
+                  ? t.progressLoadingModel
+                  : `${t.progressProcessing} (${summary.completed + summary.failed}/${summary.total})`}
+              </span>
+              <button class="secondary-btn sm" onclick={cancelCurrentJob}>
+                {t.cancelBtn}
+              </button>
+            </div>
+            <progress
+              max={Math.max(1, summary.total)}
+              value={qState.phase === "loading_model" ? undefined : summary.completed + summary.failed}
+            ></progress>
+          </div>
+        {/if}
+
+        {#if statusNotice}
+          <div class="banner info" role="status">
+            <span>{statusNotice}</span>
+            <button class="text-btn" onclick={() => (statusNotice = null)}>{t.dismissBtn}</button>
+          </div>
+        {/if}
+
+        {#if summary.oomWarnings > 0}
+          <div class="banner warning" role="status">
+            <span>{t.oomWarningBanner}</span>
+          </div>
+        {/if}
+
+        {#if selectedItem && selectedItem.warnings.length > 0}
+          <div class="banner warning" role="status">
+            <span>{t.damagedWarningPrefix}: {selectedItem.warnings.join("; ")}</span>
+          </div>
+        {/if}
+
+        {#if qState.rejectedItems.length > 0}
+          <div class="banner warning" role="status">
+            <div class="banner-body">
+              <strong>{t.rejectedFilesBanner} ({qState.rejectedItems.length})</strong>
+              <ul class="compact-list">
+                {#each qState.rejectedItems.slice(0, 4) as rej}
+                  <li>{rej.name}: {rej.reason}</li>
+                {/each}
+              </ul>
+            </div>
+          </div>
+        {/if}
+
+        {#if activeError}
+          <div class="banner error" role="alert">
+            <div class="banner-body">
+              <strong>{activeError.title}</strong>
+              <p>{activeError.fix}</p>
+              <details>
+                <summary>{t.errorDetailsLabel}</summary>
+                <code>{activeError.details}</code>
+              </details>
+            </div>
+            <button class="text-btn" onclick={() => (activeError = null)}>{t.dismissBtn}</button>
+          </div>
+        {/if}
+
+        {#if qState.phase === "partial_failure"}
+          {@const failedItems = qState.items.filter((i) => i.status === "failed")}
+          {#if failedItems.length > 0}
+            <div class="banner error" role="region" aria-label={t.statusFailed}>
+              <div class="banner-body">
+                <strong>{t.statePartialSummary}</strong>
+                <ul class="compact-list">
+                  {#each failedItems.slice(0, 6) as f}
+                    <li>{f.name}: {mapTechnicalError(f.error ?? "", t).title}</li>
+                  {/each}
+                </ul>
+              </div>
+            </div>
+          {/if}
+        {/if}
+
+        {#if cutoutPreviewUrl && originalPreviewUrl}
+          <div class="viewer-toolbar">
+            <div class="zoom-controls">
+              <button class="secondary-btn sm" onclick={() => adjustZoom(-0.25)}>{t.zoomOut}</button>
+              <span class="zoom-readout">{Math.round(zoom * 100)}%</span>
+              <button class="secondary-btn sm" onclick={() => adjustZoom(0.25)}>{t.zoomIn}</button>
+              <button class="secondary-btn sm" onclick={resetViewTransform}>{t.zoomReset}</button>
+            </div>
+            {#if zoom > 1}
+              <span class="muted small">{t.panHint}</span>
+            {/if}
+          </div>
+
+          <div
+            class="slider-viewport {backgroundMode === 'transparent' ? 'checkerboard' : ''}"
+            style:background-color={backgroundMode === "solid" ? backgroundHex : undefined}
+            role="region"
+            aria-label={t.sliderAriaLabel}
+            use:bindViewportEvents
+          >
+            <div
+              class="zoom-stage"
+              style:transform={`translate(${panX}px, ${panY}px) scale(${zoom})`}
+            >
+              <img src={cutoutPreviewUrl} alt={t.cutoutLabel} class="comparison-img" draggable="false" />
+              <div
+                class="clipped-overlay"
+                style:clip-path={`polygon(0 0, ${sliderPos}% 0, ${sliderPos}% 100%, 0 100%)`}
+              >
+                <img src={originalPreviewUrl} alt={t.originalLabel} class="comparison-img" draggable="false" />
+              </div>
             </div>
 
-            <!-- Divider Line and Handle -->
             <div
               class="slider-handle"
               style:left={`${sliderPos}%`}
-              onmousedown={() => (isDraggingSlider = true)}
               role="slider"
               tabindex="0"
-              aria-valuenow={sliderPos}
+              aria-label={t.sliderAriaLabel}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(sliderPos)}
+              aria-valuetext={`${Math.round(sliderPos)}%`}
+              onmousedown={(e) => {
+                e.stopPropagation();
+                isDraggingSlider = true;
+              }}
+              onkeydown={handleSliderKeyDown}
             >
               <div class="handle-line"></div>
-              <div class="handle-button">
-                <span>◀ ▶</span>
-              </div>
+              <div class="handle-knob" aria-hidden="true">||</div>
             </div>
 
-            <!-- Labels -->
-            <span class="view-tag left">{t.original}</span>
-            <span class="view-tag right">{t.cutout}</span>
+            <span class="canvas-tag left">{t.originalLabel}</span>
+            <span class="canvas-tag right">{t.cutoutLabel}</span>
+          </div>
+
+          {#if selectedItem}
+            <div class="stats-bar">
+              <span><strong>{t.activeDeviceLabel}:</strong> {selectedItem.device}</span>
+              <span><strong>{t.dimensionsLabel}:</strong> {selectedItem.width} x {selectedItem.height}</span>
+              <span><strong>{t.inferenceTimeLabel}:</strong> {(selectedItem.inferenceMs ?? 0).toFixed(0)} ms</span>
+              <span><strong>{t.totalTimeLabel}:</strong> {(selectedItem.timingMs ?? 0).toFixed(0)} ms</span>
+            </div>
+          {/if}
+        {:else}
+          <div class="preview-placeholder">
+            <p class="muted">
+              {selectedItem
+                ? `${selectedItem.name} (${statusLabel(selectedItem.status)})`
+                : t.stateEmptyHint}
+            </p>
+            <p class="shortcut-note">{t.shortcutsHint}</p>
+          </div>
+        {/if}
+      </section>
+
+      <!-- Right Options & Actions Panel -->
+      <aside class="options-sidebar" aria-label={t.optionsTitle}>
+        <h2>{t.optionsTitle}</h2>
+
+        <div class="field">
+          <label for="tier-select">{t.tierLabel}</label>
+          <select id="tier-select" bind:value={selectedTier} disabled={isBusy}>
+            <option value="quality">{t.tierQualityName}</option>
+            <option value="fast">{t.tierFastName}</option>
+          </select>
+          <p class="field-help">
+            {selectedTier === "quality" ? t.tierQualityDesc : t.tierFastDesc}
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="refine-select">{t.refineLabel}</label>
+          <select id="refine-select" bind:value={refineLevel} disabled={isBusy}>
+            <option value="standard">{t.refineStandard}</option>
+            <option value="light">{t.refineLight}</option>
+            <option value="none">{t.refineNone}</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="device-select">{t.deviceLabel}</label>
+          <select id="device-select" bind:value={selectedDevice} disabled={isBusy}>
+            <option value="auto">{t.deviceAuto}</option>
+            <option value="cpu">{t.deviceCpu}</option>
+            <option value="directml">{t.deviceDirectml}</option>
+            <option value="coreml">{t.deviceCoreml}</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="max-side-select">{t.maxSideLabel}</label>
+          <select id="max-side-select" bind:value={maxSide} disabled={isBusy}>
+            <option value={null}>{t.maxSideOriginal}</option>
+            <option value={2048}>{t.maxSide2048}</option>
+            <option value={1024}>{t.maxSide1024}</option>
+            <option value={512}>{t.maxSide512}</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <span class="field-label">{t.backgroundLabel}</span>
+          <div class="segmented">
+            <button
+              type="button"
+              class="seg-btn {backgroundMode === 'transparent' ? 'active' : ''}"
+              onclick={() => (backgroundMode = "transparent")}
+            >
+              {t.bgTransparent}
+            </button>
+            <button
+              type="button"
+              class="seg-btn {backgroundMode === 'solid' ? 'active' : ''}"
+              onclick={() => (backgroundMode = "solid")}
+            >
+              {t.bgSolid}
+            </button>
+          </div>
+          {#if backgroundMode === "solid"}
+            <div class="color-row">
+              <label for="bg-color-picker">{t.bgColorPickerLabel}</label>
+              <input id="bg-color-picker" type="color" bind:value={backgroundHex} />
+            </div>
+          {/if}
+        </div>
+
+        <div class="field">
+          <span class="field-label">{t.outputFolderLabel}</span>
+          <div class="folder-box" title={outputFolder ?? t.outputFolderAuto}>
+            {outputFolder ?? t.outputFolderAuto}
+          </div>
+          <div class="inline-actions">
+            <button class="secondary-btn sm" onclick={chooseOutputFolder} disabled={isBusy}>
+              {t.chooseFolder}
+            </button>
+            {#if outputFolder}
+              <button class="secondary-btn sm" onclick={() => (outputFolder = null)} disabled={isBusy}>
+                {t.resetFolder}
+              </button>
+            {/if}
           </div>
         </div>
 
-        <!-- Action bar -->
-        <div class="action-bar">
-          <button class="primary-btn" onclick={saveCutout}>
-            {t.saveBtn}
+        <div class="field checkbox-field">
+          <label>
+            <input type="checkbox" bind:checked={neverUseNetwork} />
+            <span>{t.neverUseNetworkLabel}</span>
+          </label>
+          <p class="field-help">{t.neverUseNetworkHint}</p>
+        </div>
+
+        <div class="primary-actions">
+          <button
+            class="primary-btn full"
+            onclick={runRemoveBackground}
+            disabled={isBusy || qState.items.length === 0}
+          >
+            {t.removeBackgroundBtn}
           </button>
+
+          <div class="save-row">
+            <button
+              class="secondary-btn"
+              onclick={saveSelectedCutout}
+              disabled={!selectedItem?.fullCutoutPath || isBusy}
+            >
+              {t.saveBtn}
+            </button>
+            <button
+              class="secondary-btn"
+              onclick={saveAllCutouts}
+              disabled={summary.completed === 0 || isBusy}
+            >
+              {t.saveAllBtn} ({summary.completed})
+            </button>
+          </div>
+
+          {#if qState.outputDir || outputFolder}
+            <button class="text-btn" onclick={openOutputDir}>
+              {t.openOutputFolderBtn}
+            </button>
+          {/if}
+        </div>
+      </aside>
+    {/if}
+  </div>
+
+  <!-- First-Run Model Setup Dialog -->
+  {#if showFirstRunModal}
+    <div class="modal-backdrop" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
+        <h2 id="first-run-title">{t.firstRunTitle}</h2>
+        <p>{t.firstRunIntro}</p>
+
+        {#if setupModelInfo}
+          <dl class="meta-grid">
+            <dt>{t.firstRunFileLabel}</dt>
+            <dd>{setupModelInfo.filename}</dd>
+            <dt>{t.firstRunSizeLabel}</dt>
+            <dd>{setupModelInfo.expected_size_mb.toFixed(1)} MB</dd>
+            <dt>{t.firstRunHostLabel}</dt>
+            <dd>{setupModelInfo.primary_host} (fallback: {setupModelInfo.fallback_host})</dd>
+            <dt>{t.firstRunLicenseLabel}</dt>
+            <dd>{setupModelInfo.license}</dd>
+          </dl>
+        {/if}
+
+        {#if neverUseNetwork}
+          <p class="banner warning">{t.firstRunBlockedOffline}</p>
+        {/if}
+
+        {#if isDownloading}
+          <div class="download-progress">
+            <span>{t.progressDownloading} ({qState.downloadProgress}%)</span>
+            <progress max="100" value={qState.downloadProgress}></progress>
+          </div>
+        {/if}
+
+        {#if downloadError}
+          <div class="banner error" role="alert">
+            <div class="banner-body">
+              <strong>{downloadError.title}</strong>
+              <p>{downloadError.fix}</p>
+              <details>
+                <summary>{t.errorDetailsLabel}</summary>
+                <code>{downloadError.details}</code>
+              </details>
+            </div>
+          </div>
+        {/if}
+
+        <div class="modal-actions">
+          {#if downloadError}
+            <button
+              class="primary-btn"
+              onclick={startDownloadFromModal}
+              disabled={isDownloading || neverUseNetwork}
+            >
+              {t.firstRunRetryBtn}
+            </button>
+          {:else}
+            <button
+              class="primary-btn"
+              onclick={startDownloadFromModal}
+              disabled={isDownloading || neverUseNetwork}
+            >
+              {t.firstRunDownloadBtn}
+            </button>
+          {/if}
           <button
             class="secondary-btn"
-            onclick={() => {
-              cutoutUrl = null;
-              originalUrl = null;
-              currentFilePath = null;
-            }}
+            onclick={importLocalModelFile}
+            disabled={isDownloading}
           >
-            {t.newImageBtn}
+            {t.firstRunImportBtn}
+          </button>
+          <button
+            class="text-btn"
+            onclick={() => (showFirstRunModal = false)}
+            disabled={isDownloading}
+          >
+            {t.firstRunCancelBtn}
           </button>
         </div>
-      {:else}
-        <!-- Dropzone View -->
-        <div class="dropzone-container">
-          <label class="dropzone">
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp,.bmp"
-              multiple
-              onchange={onFileSelected}
-              class="hidden-file-input"
-            />
-            <div class="dropzone-content">
-              <div class="dropzone-icon">⤓</div>
-              <h2>{t.dropTitle}</h2>
-              <p class="sub-text">{t.dropSubtitle}</p>
-              <span class="file-browse-btn">{t.chooseFile}</span>
-            </div>
-          </label>
-        </div>
-      {/if}
+      </div>
+    </div>
+  {/if}
 
-      <!-- Batch queue if multiple files selected -->
-      {#if queue.length > 0}
-        <div class="queue-panel">
-          <div class="queue-header">
-            <h3>{t.queueTitle} ({queue.length})</h3>
-            <button class="text-btn" onclick={() => (queue = [])}>{t.clearQueue}</button>
-          </div>
-          <div class="queue-list">
-            {#each queue as item}
-              <div class="queue-item {item.status}">
-                <span class="name">{item.name}</span>
-                <span class="status-pill {item.status}">{item.status}</span>
-              </div>
-            {/each}
-          </div>
+  <!-- About & Licenses Modal -->
+  {#if showAboutModal}
+    <div class="modal-backdrop" role="presentation">
+      <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="about-title">
+        <div class="modal-header">
+          <h2 id="about-title">{t.aboutTitle}</h2>
+          <button class="text-btn" onclick={() => (showAboutModal = false)}>{t.closeBtn}</button>
         </div>
-      {/if}
-    </section>
-  </div>
+
+        {#if aboutInfo}
+          <div class="about-scroll">
+            <p>
+              <strong>{t.aboutVersionLabel}:</strong> {aboutInfo.version} |
+              <strong>{t.aboutLicenseLabel}:</strong> {aboutInfo.license}
+            </p>
+
+            <h3>{t.aboutNetworkTitle}</h3>
+            <p>{aboutInfo.network_use}</p>
+
+            <h3>{t.aboutModelsTitle}</h3>
+            <pre class="doc-pre">{aboutInfo.models_markdown}</pre>
+
+            <h3>{t.aboutThirdPartyTitle}</h3>
+            <pre class="doc-pre">{aboutInfo.third_party_licenses_markdown}</pre>
+          </div>
+        {/if}
+
+        <div class="modal-actions">
+          <button class="secondary-btn" onclick={copyDiagnostics}>{t.copyDiagnosticsBtn}</button>
+          {#if diagnosticsCopied}
+            <span class="muted small">{t.diagnosticsCopied}</span>
+          {/if}
+          <button class="primary-btn" onclick={() => (showAboutModal = false)}>{t.closeBtn}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
   :global(*) {
     box-sizing: border-box;
+  }
+
+  :global(body) {
     margin: 0;
     padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 
   main {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 14px;
-    user-select: none;
+    background: var(--bg-app);
+    color: var(--text-primary);
   }
 
-  /* Theme variables */
   .theme-dark {
-    --bg-primary: #121214;
-    --bg-secondary: #1a1a1e;
-    --bg-tertiary: #26262b;
-    --border-color: #333338;
-    --text-primary: #f0f0f2;
-    --text-secondary: #9e9ea6;
+    --bg-app: #121417;
+    --bg-panel: #1a1d22;
+    --bg-elevated: #23272e;
+    --border: #2f3540;
+    --text-primary: #f1f5f9;
+    --text-secondary: #a1aab8;
     --accent: #2563eb;
     --accent-hover: #1d4ed8;
-    --card-bg: #1f1f24;
+    --checker-a: #1e2228;
+    --checker-b: #272c34;
   }
 
   .theme-light {
-    --bg-primary: #f8f9fa;
-    --bg-secondary: #ffffff;
-    --bg-tertiary: #e9ecef;
-    --border-color: #dee2e6;
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --card-bg: #ffffff;
+    --bg-app: #f6f7f9;
+    --bg-panel: #ffffff;
+    --bg-elevated: #eef1f5;
+    --border: #d5dce4;
+    --text-primary: #14181f;
+    --text-secondary: #4e5968;
+    --accent: #1d4ed8;
+    --accent-hover: #1e40af;
+    --checker-a: #e5e7eb;
+    --checker-b: #ffffff;
+  }
+
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  [role="slider"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .app-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 20px;
-    background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
+    padding: 10px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .brand-title {
-    font-size: 18px;
+    margin: 0;
+    font-size: 17px;
     font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.3px;
   }
 
   .brand-subtitle {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-secondary);
-    margin-left: 8px;
+  }
+
+  .badge-pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  .badge-pill.ok {
+    color: #16a34a;
+    border-color: rgba(22, 163, 74, 0.4);
+  }
+
+  .warn-btn {
+    color: #d97706;
+    border-color: rgba(217, 119, 6, 0.5);
+    cursor: pointer;
   }
 
   .header-controls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
 
-  .privacy-badge {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 12px;
-    background-color: var(--bg-tertiary);
-    color: var(--text-secondary);
-  }
-
-  .icon-btn {
-    padding: 5px 10px;
-    border-radius: 6px;
-    background: transparent;
-    border: 1px solid var(--border-color);
+  select,
+  input[type="color"] {
+    background: var(--bg-elevated);
     color: var(--text-primary);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
   }
 
   .app-body {
     display: flex;
     flex: 1;
-    overflow: hidden;
+    min-height: 0;
   }
 
-  .sidebar {
-    width: 290px;
-    background-color: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-  }
-
-  .control-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .control-group label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  select {
-    padding: 8px 10px;
-    border-radius: 6px;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    font-size: 13px;
-    outline: none;
-  }
-
-  .caveat-text {
-    font-size: 11px;
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
-
-  .model-status-card {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px;
-    border-radius: 6px;
-    background-color: var(--card-bg);
-    border: 1px dashed var(--border-color);
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .bg-options {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .chip {
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-primary);
-    cursor: pointer;
-    font-size: 11px;
-  }
-
-  .chip.active {
-    background-color: var(--accent);
-    color: #ffffff;
-    border-color: var(--accent);
-  }
-
-  .color-picker {
-    margin-top: 4px;
-    width: 100%;
-    height: 30px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-
-  .stats-panel {
-    margin-top: auto;
-    padding: 12px;
-    background-color: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .stats-panel h3 {
-    font-size: 12px;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    margin-bottom: 4px;
-  }
-
-  .stat-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .stat-row strong, .stat-row span:last-child {
-    color: var(--text-primary);
-  }
-
-  .workspace {
+  .empty-stage {
     flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background-color: var(--bg-primary);
-    padding: 20px;
-    position: relative;
-    overflow: hidden;
+    padding: 24px;
+    gap: 16px;
   }
 
-  .dropzone-container {
-    width: 100%;
-    max-width: 600px;
-    height: 380px;
-  }
-
-  .dropzone {
-    width: 100%;
-    height: 100%;
-    border: 2px dashed var(--border-color);
+  .dropzone-card {
+    width: min(640px, 92%);
+    padding: 48px 32px;
+    border: 2px dashed var(--border);
     border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background-color 0.2s;
-  }
-
-  .dropzone:hover {
-    border-color: var(--accent);
-    background-color: var(--bg-secondary);
-  }
-
-  .hidden-file-input {
-    display: none;
-  }
-
-  .dropzone-content {
+    background: var(--bg-panel);
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 12px;
+  }
+
+  .dropzone-card.drag-over,
+  .center-stage.drag-over {
+    border-color: var(--accent);
+    background: rgba(37, 99, 235, 0.08);
+  }
+
+  .drop-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 6px;
+  }
+
+  .shortcut-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0 0;
+  }
+
+  .queue-sidebar {
+    width: 260px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-header h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .panel-header-actions {
+    display: flex;
     gap: 8px;
   }
 
-  .dropzone-icon {
-    font-size: 48px;
-    color: var(--accent);
-    line-height: 1;
-  }
-
-  .dropzone-content h2 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .sub-text {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .file-browse-btn {
-    margin-top: 10px;
-    padding: 8px 16px;
-    background-color: var(--accent);
-    color: #ffffff;
-    border-radius: 6px;
-    font-weight: 500;
-  }
-
-  .slider-viewport {
+  .queue-scroll {
     flex: 1;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .queue-spacer {
+    position: relative;
     width: 100%;
-    max-width: 900px;
-    max-height: calc(100vh - 160px);
+  }
+
+  .queue-window {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+  }
+
+  .queue-row {
+    width: 100%;
+    height: 62px;
+    padding: 6px 10px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .queue-row.selected {
+    background: rgba(37, 99, 235, 0.14);
+  }
+
+  .thumb-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
+    font-size: 11px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
   }
 
-  .preview-canvas {
+  .thumb-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .row-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .row-name {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .status-tag {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .status-tag.done {
+    color: #16a34a;
+  }
+
+  .status-tag.warning {
+    color: #d97706;
+  }
+
+  .status-tag.failed {
+    color: #dc2626;
+  }
+
+  .center-stage {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .progress-bar-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .progress-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+
+  progress {
+    width: 100%;
+    height: 8px;
+  }
+
+  .banner {
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+
+  .banner.error {
+    border-color: #dc2626;
+    background: rgba(220, 38, 38, 0.12);
+  }
+
+  .banner.warning {
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.12);
+  }
+
+  .banner.info {
+    border-color: var(--accent);
+    background: rgba(37, 99, 235, 0.12);
+  }
+
+  .banner-body p {
+    margin: 4px 0;
+  }
+
+  .compact-list {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 12px;
+  }
+
+  .viewer-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .zoom-readout {
+    min-width: 48px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .slider-viewport {
     position: relative;
-    max-width: 100%;
-    max-height: 100%;
+    flex: 1;
+    min-height: 240px;
+    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .checkerboard {
-    background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
-      linear-gradient(-45deg, #ccc 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #ccc 75%),
-      linear-gradient(-45deg, transparent 75%, #ccc 75%);
-    background-size: 16px 16px;
-    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    background-image:
+      linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    background-color: var(--checker-b);
+  }
+
+  .zoom-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-origin: center center;
   }
 
   .comparison-img {
-    display: block;
-    max-width: 100%;
-    max-height: calc(100vh - 180px);
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    user-select: none;
     pointer-events: none;
   }
 
   .clipped-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+    inset: 0;
   }
 
   .slider-handle {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 2px;
+    width: 28px;
     transform: translateX(-50%);
     cursor: ew-resize;
-    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
   }
 
   .handle-line {
     width: 2px;
     height: 100%;
-    background-color: #ffffff;
-    box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+    background: #ffffff;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
   }
 
-  .handle-button {
+  .handle-knob {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background-color: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    color: #1a1a1e;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #ffffff;
+    font-size: 11px;
     font-weight: 700;
   }
 
-  .view-tag {
+  .canvas-tag {
     position: absolute;
-    bottom: 12px;
-    padding: 4px 10px;
+    bottom: 10px;
+    padding: 3px 8px;
     border-radius: 4px;
-    background-color: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.65);
     color: #ffffff;
     font-size: 11px;
-    font-weight: 600;
+    z-index: 4;
   }
 
-  .view-tag.left {
-    left: 12px;
+  .canvas-tag.left {
+    left: 10px;
   }
 
-  .view-tag.right {
-    right: 12px;
+  .canvas-tag.right {
+    right: 10px;
   }
 
-  .action-bar {
+  .stats-bar {
     display: flex;
-    gap: 12px;
-    margin-top: 14px;
-  }
-
-  .primary-btn {
-    padding: 9px 18px;
-    border-radius: 6px;
-    background-color: var(--accent);
-    color: #ffffff;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .primary-btn.sm {
-    padding: 6px 12px;
+    gap: 16px;
+    flex-wrap: wrap;
     font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 2px;
   }
 
-  .secondary-btn {
-    padding: 9px 18px;
-    border-radius: 6px;
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid var(--border-color);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: 12px;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .loading-container {
+  .preview-placeholder {
+    flex: 1;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    padding: 24px;
+    text-align: center;
   }
 
-  .alert-banner {
-    position: absolute;
-    top: 12px;
-    left: 20px;
-    right: 20px;
-    padding: 10px 14px;
+  .options-sidebar {
+    width: 300px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    padding: 12px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .options-sidebar h2 {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .field label,
+  .field-label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .field-help,
+  .muted {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .small {
+    font-size: 11px;
+  }
+
+  .segmented {
+    display: flex;
+    gap: 6px;
+  }
+
+  .seg-btn {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 12px;
     border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .seg-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+  }
+
+  .color-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .folder-box {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .inline-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .checkbox-field label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .primary-actions {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .save-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .save-row button {
+    flex: 1;
+  }
+
+  .primary-btn,
+  .secondary-btn,
+  .text-btn {
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+  }
+
+  .primary-btn {
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .primary-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  .secondary-btn {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border);
+  }
+
+  .text-btn {
+    background: transparent;
+    color: var(--accent);
+    padding: 4px 6px;
+  }
+
+  .sm {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+
+  .full {
+    width: 100%;
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 50;
+  }
+
+  .modal {
+    width: min(540px, 100%);
+    max-height: 88vh;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal-lg {
+    width: min(760px, 100%);
+  }
+
+  .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+
+  .modal h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 6px 12px;
+    margin: 0;
     font-size: 13px;
-    z-index: 20;
   }
 
-  .alert-banner.error {
-    background-color: rgba(239, 68, 68, 0.15);
-    border: 1px solid #ef4444;
-    color: #ef4444;
+  .meta-grid dt {
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 
-  .alert-banner.warning {
-    background-color: rgba(245, 158, 11, 0.15);
-    border: 1px solid #f59e0b;
-    color: #f59e0b;
+  .meta-grid dd {
+    margin: 0;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .about-scroll {
+    overflow-y: auto;
+    max-height: 60vh;
+    padding-right: 4px;
+    font-size: 13px;
+  }
+
+  .doc-pre {
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    background: var(--bg-elevated);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+    }
   }
 </style>
