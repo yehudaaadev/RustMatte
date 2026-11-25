@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Aligned desktop default hardware execution provider with `D-017`/`D-022` (`cpu` default in `settings.rs` and UI options, keeping `auto`/`directml`/`coreml` opt-in; `D-030`).
 - Defaulted the comparison preview slider to cutout-only (`0%`) when a photo finishes or is selected, added a `"Compare with original"` toolbar toggle (`C` keyboard shortcut) with per-session split memory, and reset new photos back to cutout-only (`D-029`).
 - Stripped Windows extended-length path prefixes (`\\?\` drive paths and `\\?\UNC\`) for UI display only while preserving canonical paths internally (`P-034`).
 - Moved all active status banners, decode warnings, file rejection reasons, dialog titles/filters, and About network descriptions to code-based `en` and natural `id` dictionaries (`D-029`).

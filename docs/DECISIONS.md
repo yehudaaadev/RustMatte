@@ -207,6 +207,13 @@ Format:
 - Reason: Showing the finished cutout first matches user expectation immediately after processing, structured message codes allow live EN/ID switching on active banners without stale frozen strings, and display-only prefix stripping prevents confusing `\\?\C:\...` banners without breaking canonical path checks.
 - Alternatives considered: Stripping `\\?\` internally (breaks long Windows path canonical equality checks), leaving `statusNotice` as a pre-formatted string (breaks live language switches).
 
+### D-030: Align Desktop Default Execution Provider with D-017/D-022 (`cpu`)
+- Date: 2026-11-25
+- Decision: Set `AppSettings::default().device` and frontend initial `selectedDevice` to `"cpu"` (with `CPU only` listed first in the selector), matching `D-017`, `D-022`, `rustmatte-core`, and `rustmatte-cli`.
+- Status: accepted
+- Reason: Shipped CI/release binaries compile CPU-only (`default = []`, without `directml` or `coreml` features), and DirectML can encounter VRAM OOM (`8007000E`), minor floating-point divergence, or driver issues when enabled without explicit opt-in.
+- Alternatives considered: Keeping `"auto"` default in the UI (misleads users when release binaries compile CPU-only and risks driver/VRAM surprises on custom GPU builds).
+
 ---
 
 ## Superseded Decisions

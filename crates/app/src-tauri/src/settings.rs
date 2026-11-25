@@ -26,7 +26,7 @@ impl Default for AppSettings {
             language: "en".to_string(),
             theme: "system".to_string(),
             tier: "quality".to_string(),
-            device: "auto".to_string(),
+            device: "cpu".to_string(),
             refine_level: "standard".to_string(),
             output_folder: None,
             max_side: None,
@@ -51,7 +51,7 @@ impl AppSettings {
             self.tier = "quality".to_string();
         }
         if !matches!(self.device.as_str(), "auto" | "cpu" | "directml" | "coreml") {
-            self.device = "auto".to_string();
+            self.device = "cpu".to_string();
         }
         if self.refine_level == "off" {
             self.refine_level = "none".to_string();
@@ -209,11 +209,14 @@ mod tests {
         assert_eq!(loaded, AppSettings::default());
 
         let legacy = AppSettings {
+            device: "cuda".to_string(),
             refine_level: "off".to_string(),
             background_hex: "not-hex".to_string(),
             ..Default::default()
         }
         .sanitized();
+        assert_eq!(AppSettings::default().device, "cpu");
+        assert_eq!(legacy.device, "cpu");
         assert_eq!(legacy.refine_level, "none");
         assert_eq!(legacy.background_hex, "#ffffff");
 

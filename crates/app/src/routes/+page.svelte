@@ -66,7 +66,7 @@
   let themeMode = $state<ThemeMode>("system");
   let systemPrefersDark = $state(true);
   let selectedTier = $state<"quality" | "fast">("quality");
-  let selectedDevice = $state("auto");
+  let selectedDevice = $state("cpu");
   let refineLevel = $state<RefineLevel>("standard");
   let maxSide = $state<number | null>(null);
   let backgroundMode = $state<BgMode>("transparent");
@@ -180,7 +180,7 @@
             ? saved.theme
             : "system";
         selectedTier = saved.tier === "fast" ? "fast" : "quality";
-        selectedDevice = saved.device || "auto";
+        selectedDevice = saved.device || "cpu";
         refineLevel =
           saved.refine_level === "none" || saved.refine_level === "light"
             ? saved.refine_level
@@ -1127,8 +1127,8 @@
         <div class="field">
           <label for="device-select">{t.deviceLabel}</label>
           <select id="device-select" bind:value={selectedDevice} disabled={isBusy}>
-            <option value="auto">{t.deviceAuto}</option>
             <option value="cpu">{t.deviceCpu}</option>
+            <option value="auto">{t.deviceAuto}</option>
             <option value="directml">{t.deviceDirectml}</option>
             <option value="coreml">{t.deviceCoreml}</option>
           </select>
