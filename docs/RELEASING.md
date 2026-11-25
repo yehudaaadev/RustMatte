@@ -42,7 +42,7 @@ git push origin v0.1.0-rc2
 Artifacts produced per platform:
 - **Windows (`windows-latest`, `x86_64-pc-windows-msvc`)**: `rustmatte-cli-<tag>-x86_64-pc-windows-msvc.zip` + `RustMatte_<version>_x64-setup.exe` (NSIS with WebView2 `embedBootstrapper`)
 - **macOS (`macos-latest`, `aarch64-apple-darwin`, Apple Silicon only)**: `rustmatte-cli-<tag>-aarch64-apple-darwin.tar.gz` + `RustMatte_<version>_aarch64.dmg` (unsigned; Intel `x86_64` Macs not covered)
-- **Linux (`ubuntu-22.04`, `x86_64-unknown-linux-gnu`)**: `rustmatte-cli-<tag>-x86_64-unknown-linux-gnu.tar.gz` + `RustMatte_<version>_amd64.AppImage` + `RustMatte_<version>_amd64.deb`
+- **Linux (`ubuntu-24.04`, `x86_64-unknown-linux-gnu`)**: `rustmatte-cli-<tag>-x86_64-unknown-linux-gnu.tar.gz` + `RustMatte_<version>_amd64.AppImage` + `RustMatte_<version>_amd64.deb`
 - **Checksums**: consolidated `SHA256SUMS.txt`
 
 ## 4. Verification Before Publishing the Draft

@@ -87,6 +87,6 @@ WebAssembly and PWA implementation for browser-based offline processing.
 ## Platform Strategy and Packaging Summary
 - Windows (`x86_64-pc-windows-msvc`): Primary v1.0 target; NSIS installer (`RustMatte_<ver>_x64-setup.exe`) with WebView2 `embedBootstrapper` (`~1.8 MB`). ONNX Runtime (`ort 2.0.0-rc.15`) is statically linked into `rustmatte-app.exe` on Windows x64 (verified by PE import inspection and isolated clean-directory install + launch).
 - macOS (`aarch64-apple-darwin`, experimental): `.dmg` bundle built unsigned on `macos-latest`; Intel `x86_64` Macs are out of scope for v0.1.
-- Linux (`x86_64-unknown-linux-gnu`, experimental): `.AppImage` and `.deb` built on `ubuntu-22.04` targeting system `libwebkit2gtk-4.1-0` and `libgtk-3-0`.
+- Linux (`x86_64-unknown-linux-gnu`, experimental): `.AppImage` and `.deb` built on `ubuntu-24.04` (`glibc 2.39+` required by prebuilt `ort 2.0.0-rc.15` static archive) targeting system `libwebkit2gtk-4.1-0` and `libgtk-3-0`.
 - Release workflow (`.github/workflows/release.yml`) builds CLI archives + desktop installers on `v*` tags and publishes a **draft prerelease** with consolidated `SHA256SUMS.txt` (release procedure in `docs/RELEASING.md`).
 - Web Browser (WASM/PWA): Planned for v2.0; Android planned for v3.0.

@@ -1,36 +1,36 @@
 # Project State: RustMatte
 
 ## Current Phase
-UI Polish & CPU Default Alignment Complete — ready for owner manual UI verification, fixture provenance confirmation, and confirmation to push/tag `v0.1.0-rc2`.
+Pre-Release Stabilization Complete (`PRE-PUSH FINAL FIXES` committed locally on `main`, NOT pushed, NOT re-tagged) — ready for owner push and re-tag verification of `v0.1.0-rc2` plus manual owner checklist.
 
 ## Last Session Summary
-Executed UI Polish Fixes + Desktop Hardware Default Alignment (`D-029`, `D-030`, `P-034`) on top of pre-release hardening commits:
-- **Hardware Default Alignment (`D-030`)**: Changed desktop default execution provider from `"auto"` to `"cpu"` in `crates/app/src-tauri/src/settings.rs` and `crates/app/src/routes/+page.svelte` (`cpu` option listed first), matching `D-017`/`D-022` and CPU-only compiled release binaries.
-- **Comparison Slider Default**: Changed initial slider state to cutout-only (`0%`) with `"Compare with original"` toggle button (`C` shortcut), remembered split ratio per session, reset to cutout-only on each newly processed/selected photo, kept ARIA slider keyboard navigation intact, and added `crates/app/tests/slider.test.ts`.
-- **Windows Path Display Prefix**: Added cross-platform `format_display_path` in Rust (`crates/app/src-tauri/src/validation.rs`) and TypeScript (`crates/app/src/lib/banners.ts`) stripping `\\?\` on drive paths and normalizing `\\?\UNC\` -> `\\` for display only while retaining canonical `PathBuf` internally.
-- **Full Localization Audit**: Converted active banners (`job_done`, `job_partial`, `job_cancelled`, `saved_single`, `saved_all`), decode warnings (`damaged_input`), rejected input reasons (`inaccessible`, `read_dir_failed`, `not_file_or_dir`, `unsupported_format`), file dialog titles/filters, and About network description into typed message codes + complete EN and natural Indonesian translations (`crates/app/tests/i18n.test.ts`).
-- **Save All Count**: Added `summary.saveable` in `crates/app/src/lib/queue.ts` so `Save all (N)` counts only completed/warning items with `fullCutoutPath` and disables when `0`.
-
-Earlier Hardenings Retained Intact (`D-027`, `D-028`, `P-032`, `P-033`):
-- `custom-protocol` compile-time release guard, `$APPCACHE/startup.log` offline readiness verification (`ui_ready mode=custom-protocol origin=http://tauri.localhost`, zero port `1420` connections), and `release.yml` binary check.
-- Banded 128-row Guided Filter (`2,185.15 MB` Quality / `492.68 MB` Fast at 24 MP), `io.github.yehudaaadev.rustmatte` bundle identifier, comparison table verification, and removal of stale `tests/fixtures/SHA256SUMS`.
+Completed all remaining `PRE-PUSH FINAL FIXES` and verified the full workspace quality gate:
+- **Task 1 (24-Pair Refine Parity & 128-Row Seam Check)**: Compared `207ef8d` vs `HEAD` release CLIs across `hewan1`, `orang1`, `baju1`, `rambut1`, `rambut2`, `large_24mp` (`quality`/`fast` x `light`/`standard`): `MaxA = 1`, `MeanA <= 0.0003`, `%>2 = 0.00%` across all 24 pairs (`MaxRGBA <= 2` on 23/24 pairs, `5` on `large_24mp` `quality/standard` affecting `0.00%` of pixels). On `large_24mp.jpg` (31 band seams at `128*k`), `HEAD` matched `207ef8d` identically (`SeamA = 0.0655` vs `AdjA = 0.0578` on Quality; `0.0874` vs `0.0733` on Fast). Generated `bench/out/refine-check/index.html` and removed temporary worktree `_rustmatte_207ef8d_wt`.
+- **Desktop CPU Default & Read-Only Line (`D-030`, `D-031`)**: Migrated saved `"auto"` -> `"cpu"` on load in `crates/app/src-tauri/src/settings.rs` (+ test), hid `#device-select` in `crates/app/src/routes/+page.svelte`, and replaced it with localized read-only `"Processing: CPU"` / `"Perangkat proses: CPU"`.
+- **Release `custom-protocol` Guard (`D-031`)**: Moved `compile_error!` from `lib.rs` to `crates/app/src-tauri/src/main.rs` so `cargo test --release -j 2 --workspace` passes (`45 passed, 2 ignored`), while `cargo build --release -p rustmatte-app` fails cleanly at `main.rs:5` (`EXIT=101`).
+- **Model Source Primary (`D-031`)**: Made `huggingface.co` primary (`source_urls[0]`) in `crates/core/src/model.rs` (since `models-v1` release assets currently return `404`), keeping release assets as fallback mirror.
+- **Release Workflow Fixes (`.github/workflows/release.yml`, `D-031`)**: Fixed macOS binary discovery (`*/Contents/MacOS/*` for `RustMatte.app/Contents/MacOS/RustMatte`) and switched Linux release builds from `ubuntu-22.04` to `ubuntu-24.04` (resolving `libort_sys` `__isoc23_strtoull` / GCC 13+ `libstdc++` undefined symbols), syncing `README.md`, `docs/RELEASING.md`, and `docs/ARCHITECTURE.md`.
+- **Full Quality Gate & Offline Launch Verified**:
+  - `release.yml` YAML valid, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace -j 2`, `cargo test --release --workspace -j 2`, `cargo deny check licenses`, `cargo deny check advisories` all passed.
+  - `npm run license-check`, `npm run license-check:all`, `npm test` (6/6), `npm run check` (0 errors, 0 warnings), and `npx tauri build --bundles nsis` (`RustMatte_0.1.0_x64-setup.exe`, `9.69 MiB`) all passed.
+  - Real offline launch of `target/release/rustmatte-app.exe` with `PORT_1420_LISTENERS=0` wrote `ui_ready mode=custom-protocol origin=http://tauri.localhost` in `1,606 ms`.
 
 ## Done
-- Phase 0 through Phase 4 + Pre-Release Fixes + Desktop `custom-protocol` Guard + UI Polish & CPU Default Alignment complete locally.
+- Phase 0 through Phase 4 + Pre-Release Fixes + UI Polish + Pre-Push Final Fixes (`D-028` through `D-031`) verified locally on Windows.
 
 ## In Progress
-- Awaiting owner manual UI verification checklist, `tests/fixtures/PROVENANCE.md` (`TODO(owner)` fixtures) review, `models-v1` asset upload, and confirmation to push `main` / tag `v0.1.0-rc2`.
+- None (awaiting owner push to `origin/main` and re-tag `v0.1.0-rc2` to re-run `.github/workflows/release.yml` in cloud).
 
 ## Known Broken or Failing
-- `https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/*.onnx` returns `404` (HuggingFace fallback works).
-- Multi-OS `release.yml` cloud build (`v0.1.0-rc2`), macOS/Linux runtime tests, visual inspection of the updated desktop UI, and clean second-PC installer verification remain unverified locally.
+- `https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/*.onnx` returns `404` (HuggingFace is now primary; release asset URLs remain secondary mirror).
+- Cloud verification of `.github/workflows/release.yml` fixes (macOS `.app` binary lookup and Linux `ubuntu-24.04` build) is **UNVERIFIED in cloud** until owner pushes and re-tags `v0.1.0-rc2`.
 
 ## Next Step
-- Owner verifies the updated UI with the manual checklist, reviews `tests/fixtures/PROVENANCE.md`, and confirms pushing `main` and tagging `v0.1.0-rc2`.
+- Owner pushes local `main` commits to `origin/main`, moves/re-pushes tag `v0.1.0-rc2` (when ready), verifies all 3 OS jobs + `Create Draft Prerelease` in GitHub Actions, and completes manual GUI/clean-machine/provenance checklist.
 
 ## Open Questions for the Owner
 - How would you like to handle the `TODO(owner)` / person fixtures in `tests/fixtures/PROVENANCE.md` before pushing?
-- Ready to push local commits to `origin/main` and create tag `v0.1.0-rc2`?
+- Ready to push local commits to `origin/main` and re-tag `v0.1.0-rc2`?
 
 ## Last Updated
 2026-11-25

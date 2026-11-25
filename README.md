@@ -40,8 +40,8 @@ Installers are published on [GitHub Releases](https://github.com/yehudaaadev/Rus
 - **Gatekeeper Warning**: Because the app is unsigned and not notarized, macOS will block opening it (*"cannot be opened because the developer cannot be verified"*). Verify the `.dmg` checksum first, then open **System Settings -> Privacy & Security** -> **Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/RustMatte.app`.
 
 ### Linux (`x86_64` — Experimental)
-- **AppImage**: Download `RustMatte_<version>_amd64.AppImage`, run `chmod +x RustMatte_*.AppImage`, and launch. On Ubuntu 22.04+/24.04+, `libfuse2` (`sudo apt install libfuse2`) may be required.
-- **Debian / Ubuntu (`.deb`)**: Download `RustMatte_<version>_amd64.deb` and install with `sudo apt install ./RustMatte_*.deb`.
+- **AppImage**: Download `RustMatte_<version>_amd64.AppImage`, run `chmod +x RustMatte_*.AppImage`, and launch. Built on Ubuntu 24.04 (`glibc 2.39+` required by prebuilt ONNX Runtime static binaries); `libfuse2` (`sudo apt install libfuse2t64` or `libfuse2`) may be required for AppImage.
+- **Debian / Ubuntu (`.deb`)**: Download `RustMatte_<version>_amd64.deb` and install with `sudo apt install ./RustMatte_*.deb` (Ubuntu 24.04+ / `glibc 2.39+`).
 - **Required Runtime Packages**: System WebKitGTK/GTK packages (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`, `librsvg2-2`).
 
 ## Verify Your Download
@@ -104,7 +104,7 @@ Uninstalling RustMatte removes only the application binary and never touches you
 ## FAQ
 
 - **Does RustMatte work offline?** Yes. Once the `.onnx` model file is cached or imported, RustMatte runs 100% locally. You can also turn on **"Never use the network"** in the desktop Options panel or pass `--no-download` in the CLI.
-- **Why does the first run ask to download a model?** Bundling 183 MB+ of AI weights inside every installer bloats downloads and updates. Instead, RustMatte keeps the installer small (`9.69 MiB` on Windows) and asks permission before downloading weights once, verified by SHA-256.
+- **Why does the first run ask to download a model?** Bundling 183 MB+ of AI weights inside every installer bloats downloads and updates. Instead, RustMatte keeps the installer small (`9.69 MiB` on Windows) and asks permission before downloading weights once from HuggingFace (`huggingface.co`), verified by SHA-256.
 - **What licenses apply to the code and AI models?** The RustMatte application is licensed under **GPL-3.0-or-later** ([LICENSE](LICENSE)). Quality tier (`BiRefNet_lite_512`) weights are **MIT**, and Fast tier (`U-2-Netp`) weights are **Apache-2.0**. Both were trained on academic datasets (DIS5K / DUTS) with non-commercial dataset terms; see [MODELS.md](MODELS.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for full provenance notes.
 - **Why isn't output always identical to paid cloud APIs?** Cloud services often run huge proprietary multi-stage models on datacenter GPUs. RustMatte runs compact open-weight models (`512x512` / `320x320` input) on local consumer CPUs/GPUs so your photos never leave your computer.
 - **Why are glass bottles or windows segmented as solid?** Dichotomous foreground-segmentation models predict a foreground object mask rather than background refraction/transmittance, so transparent glass is treated as a solid subject.
@@ -115,7 +115,7 @@ Verified against upstream repositories and pricing pages on **2026-11-25**:
 
 | Tool | Runtime & Install | Privacy / Offline | Licensing Model | Typical Trade-off |
 | :--- | :--- | :--- | :--- | :--- |
-| **RustMatte** | Native Rust + Tauri 2 desktop app & single CLI binary (`9.69 MiB` Windows setup) | 100% local after one-time consented model fetch or `.onnx` import | App: GPL-3.0-or-later; Weights: MIT / Apache-2.0 ([MODELS.md](MODELS.md)) | Runs on local CPU/GPU (`~3.1 s` Quality, `~0.33 s` Fast measured on desktop CPU); glass segmented solid |
+| **RustMatte** | Native Rust + Tauri 2 desktop app & single CLI binary (`9.69 MiB` Windows setup) | 100% local after one-time consented model fetch or `.onnx` import | App: GPL-3.0-or-later; Weights: MIT / Apache-2.0 ([MODELS.md](MODELS.md)) | Runs on local CPU in `v0.1` release builds (`~3.1 s` Quality, `~0.33 s` Fast measured on desktop CPU); glass segmented solid |
 | **[rembg](https://github.com/danielgatis/rembg)** | Python CLI, library, HTTP server, or Docker container | Runs locally on your machine/server (fetches weights on first run) | MIT License ([LICENSE.txt](https://github.com/danielgatis/rembg/blob/main/LICENSE.txt)) | Requires Python environment; supports multiple models (`U^2-Net`, `ISNet`, `BiRefNet`, etc.) |
 | **[@imgly/background-removal](https://github.com/imgly/background-removal-js)** | JavaScript / WASM / WebGPU in browser or Node.js | Runs client-side in browser/Node | AGPL-3.0 ([LICENSE.md](https://github.com/imgly/background-removal-js/blob/main/packages/web/LICENSE.md)) or commercial license | Convenient for web apps; AGPL copyleft obligations or commercial licensing apply |
 | **[remove.bg](https://www.remove.bg/pricing)** | Cloud SaaS / REST API | Uploads images to third-party servers (files discarded after 60 min per upload notice) | Proprietary commercial service (free previews up to `0.25 MP`; paid credits up to `50 MP`) | Zero local hardware requirements; cloud upload and per-credit cost at full resolution |

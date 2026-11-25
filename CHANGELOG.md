@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Made `huggingface.co` the primary model download source (`models-v1` GitHub Release assets currently return `404`), keeping release assets as secondary mirror (`D-031`).
+- Migrated saved `"auto"` device settings to `"cpu"` on load and replaced `#device-select` with a read-only localized CPU processing status line (`D-030`, `D-031`).
+- Moved the release `custom-protocol` `compile_error!` guard from `lib.rs` to `crates/app/src-tauri/src/main.rs` so `cargo test --release --workspace` succeeds while `cargo build --release` still blocks `devUrl` release binaries (`D-031`).
+- Fixed `.github/workflows/release.yml` macOS binary lookup (`*/Contents/MacOS/*` for `RustMatte.app/Contents/MacOS/RustMatte`) and updated Linux release builds to `ubuntu-24.04` (`glibc 2.39+` required by `ort` prebuilt static archives; `D-031`).
 - Aligned desktop default hardware execution provider with `D-017`/`D-022` (`cpu` default in `settings.rs` and UI options, keeping `auto`/`directml`/`coreml` opt-in; `D-030`).
 - Defaulted the comparison preview slider to cutout-only (`0%`) when a photo finishes or is selected, added a `"Compare with original"` toolbar toggle (`C` keyboard shortcut) with per-session split memory, and reset new photos back to cutout-only (`D-029`).
 - Stripped Windows extended-length path prefixes (`\\?\` drive paths and `\\?\UNC\`) for UI display only while preserving canonical paths internally (`P-034`).

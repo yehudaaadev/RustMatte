@@ -115,7 +115,7 @@ Format:
 
 ### D-017: Platform Tiering and Default Execution Provider
 - Date: 2026-11-24
-- Decision: Set CPU as the default execution provider across all platforms. Keep hardware execution providers (DirectML on Windows, CoreML on macOS) as optional settings with automatic CPU fallback. Designate Windows as the primary v1.0 target with full manual testing and WebView2 bootstrapper. Label macOS and Linux as experimental until physically tested, while building and testing in CI from Phase 0. Move Android to v3.
+- Decision: Set CPU as the default execution provider across all platforms. Keep hardware execution providers (DirectML on Windows, CoreML on macOS) as optional Cargo-feature-gated settings with automatic CPU fallback (note: v0.1 release binaries compile CPU-only; see D-030/D-031). Designate Windows as the primary v1.0 target with full manual testing and WebView2 bootstrapper. Label macOS and Linux as experimental until physically tested, while building and testing in CI from Phase 0. Move Android to v3.
 - Reason: Guarantees reliable out-of-the-box operation on standard PCs without discrete GPUs or specialized driver setups.
 - Status: accepted
 - Alternatives considered: DirectML as default (unstable across varied hardware without fallback), immediate mobile support.
@@ -149,11 +149,12 @@ Format:
 - Decision: Implement an $O(N)$ separable 2D box-filtered Guided Filter ($r = 4, \epsilon = 10^{-4}$) using original grayscale luminance as guidance to align segmentation boundaries with fine strands of hair and subtle edges. Apply selective transition zone feathering locking definite foreground ($\ge 0.95$) to opaque ($255$) and definite background ($\le 0.05$) to transparent ($0$) to prevent interior softness. Implement a $5 \times 5$ boundary color defringing pass that extrapolates adjacent solid foreground RGB into semi-transparent boundary pixels ($\alpha < 235$) to decontaminate background color bleed and eliminate colored halos. Enable refinement by default in `Remover`, with an opt-out CLI flag `--no-refine`.
 - Status: accepted
 - Reason: Substantially elevates cutout quality on challenging hair, fur, and clothing silhouettes while adding negligible CPU runtime overhead (measured 25 ms on 1MP, 177 ms on 2MP; well below 300 ms budget).
+- Owner Approval (2026-11-25): Default refine level `standard` approved by owner after inspecting three desktop app results (`rambut1` Quality, `baju1` Fast, `hewan2` Fast). **Caveat**: Refined `24 MP` outputs and saturated-color backgrounds have **not** yet been reviewed by the owner.
 - Alternatives considered: Global Gaussian blur (causes interior softness and boundary bleeding), secondary neural matting network such as ViTMatte (adds hundreds of megabytes of model weight overhead and multi-second latency, violating lightweight offline desktop requirements).
 
 ### D-022: Hardware Execution Providers (DirectML/CoreML) and Multi-Stage Graceful CPU Fallback
 - Date: 2026-11-24
-- Decision: Add optional hardware execution providers (`directml` for Windows DirectX 12 GPUs, `coreml` for Apple Silicon/Neural Engine on macOS) gated behind cargo feature flags. Maintain pure CPU as the default provider (`--device cpu` per D-017). Implement two-stage graceful fallback to CPU: (1) during session initialization if the EP cannot be registered or committed, and (2) during inference execution if the EP raises a runtime error (e.g., DirectX `8007000E` out-of-memory during fused graph compilation on low-VRAM GPUs). Before retrying inference on CPU, the failed hardware session is explicitly dropped to release all GPU/system memory buffers back to the OS.
+- Decision: Add optional hardware execution providers (`directml` for Windows DirectX 12 GPUs, `coreml` for Apple Silicon/Neural Engine on macOS) gated behind cargo feature flags. Maintain pure CPU as the default provider (`--device cpu` per D-017). Prebuilt v0.1 release binaries compile CPU-only (`default = []`). Implement two-stage graceful fallback to CPU: (1) during session initialization if the EP cannot be registered or committed, and (2) during inference execution if the EP raises a runtime error (e.g., DirectX `8007000E` out-of-memory during fused graph compilation on low-VRAM GPUs). Before retrying inference on CPU, the failed hardware session is explicitly dropped to release all GPU/system memory buffers back to the OS.
 - Status: accepted
 - Reason: Unlocks hardware acceleration for models on compatible GPUs (measured 328 ms inference on Fast tier with DirectML vs 464 ms on CPU) while guaranteeing 100% crash-free stability across heterogeneous hardware configurations without fatal aborts.
 - Alternatives considered: Crashing on GPU out-of-memory (poor UX), enforcing GPU by default (breaks headless/older machines).
@@ -213,6 +214,13 @@ Format:
 - Status: accepted
 - Reason: Shipped CI/release binaries compile CPU-only (`default = []`, without `directml` or `coreml` features), and DirectML can encounter VRAM OOM (`8007000E`), minor floating-point divergence, or driver issues when enabled without explicit opt-in.
 - Alternatives considered: Keeping `"auto"` default in the UI (misleads users when release binaries compile CPU-only and risks driver/VRAM surprises on custom GPU builds).
+
+### D-031: HuggingFace Primary Model Source, Binary-Entrypoint Release Guard, and Ubuntu 24.04 Release Runner
+- Date: 2026-11-25
+- Decision: (1) Make `huggingface.co` primary (`source_urls[0]`) in `crates/core/src/model.rs` while keeping `models-v1` release assets as secondary mirror, and display only the read-only CPU processing line in the desktop UI (`settings.rs` migrates saved `"auto"` to `"cpu"`). (2) Place the `#[cfg(all(not(debug_assertions), dev, not(test)))] compile_error!(...)` guard in `crates/app/src-tauri/src/main.rs` instead of `lib.rs` so `cargo test --release --workspace` passes while `cargo build --release --workspace` / `npx tauri build` still enforces `custom-protocol`. (3) Update `.github/workflows/release.yml` to locate the bundled macOS executable via `*/Contents/MacOS/*` (`RustMatte`) and run Linux release builds on `ubuntu-24.04`.
+- Status: accepted
+- Reason: Both `models-v1` GitHub Release URLs currently return `HTTP 404`; putting `compile_error!` in `lib.rs` blocked `cargo test --release --workspace`; `RustMatte.app` names its executable after `productName` (`RustMatte`); and prebuilt `ort = "=2.0.0-rc.15"` static Linux binaries reference `__isoc23_strtoull` / GCC 13+ `libstdc++` symbols unavailable on `ubuntu-22.04` (`glibc 2.35`). Empirical 24-pair regression check (`207ef8d` vs `HEAD`) confirmed `MaxA = 1`, `%>2 = 0.00%`, and identical 128-row seam behavior on `large_24mp.jpg`.
+- Alternatives considered: Keeping `models-v1` primary (fails on 404 before fallback), compiling ONNX Runtime from source on `ubuntu-22.04` (high CI build time and complexity).
 
 ---
 
