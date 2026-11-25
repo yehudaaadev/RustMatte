@@ -1,0 +1,28 @@
+name: Feature Request
+description: Suggest an improvement to RustMatte CLI or Desktop UI
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow need
+      description: What are you trying to accomplish?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: How should RustMatte behave while staying offline, simple, and privacy-first?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: I checked docs/ROADMAP.md and existing issues first.
+          required: true

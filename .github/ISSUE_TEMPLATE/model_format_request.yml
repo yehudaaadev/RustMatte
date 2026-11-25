@@ -1,0 +1,38 @@
+name: Model or Format Request
+description: Request a new AI segmentation model or image format support
+title: "[Model/Format]: "
+labels: ["model"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request type
+      options:
+        - AI Model Tier / Variant
+        - Image Format Support
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Upstream repository or specification URL
+      description: Link to the official model repository, ONNX export, or format specification.
+    validations:
+      required: true
+
+  - type: input
+    id: license
+    attributes:
+      label: Code, weight, and training-data license
+      description: Must be compatible with commercial user use and GPL-3.0-or-later redistribution rules (no AGPL or non-commercial-only weights).
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why should RustMatte support this?
+      description: Explain quality, memory, speed, or compatibility benefits.
+    validations:
+      required: true

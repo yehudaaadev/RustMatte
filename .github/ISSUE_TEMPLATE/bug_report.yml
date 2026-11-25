@@ -1,0 +1,43 @@
+name: Bug Report
+description: Report a crash, incorrect output, or UI/CLI bug in RustMatte
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Plain description of the bug and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can a maintainer reproduce this?
+      value: |
+        1. Open RustMatte (Desktop / CLI)
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostic-info
+    attributes:
+      label: Diagnostic Info
+      description: In the desktop app, open "About & Licenses" -> "Copy diagnostic info" and paste below (contains no file paths or image names). For CLI, paste `rustmatte --version` and OS/CPU/RAM.
+      placeholder: |
+        RustMatte v0.1.0
+        OS: windows (x86_64)
+        CPU cores: 12
+        RAM: 16384 MB total / 8192 MB available
+        Selected tier: quality
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical-details
+    attributes:
+      label: Error details or logs (optional)
+      description: Paste the text from the UI "Technical details" expander or CLI stderr output (remove any private file paths before posting).
