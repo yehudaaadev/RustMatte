@@ -35,14 +35,23 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
   state = enqueuePaths(
     state,
     ["/photos/a.jpg", "/photos/b.jpg", "/photos/a.jpg"],
-    [{ path: "/photos/note.txt", name: "note.txt", reason: "Unsupported" }]
+    [
+      {
+        path: "/photos/note.txt",
+        name: "note.txt",
+        reason_code: "unsupported_format",
+        reason: "Unsupported",
+      },
+    ]
   );
   assert.equal(state.items.length, 2);
   assert.equal(state.rejectedItems.length, 1);
   assert.equal(state.selectedIndex, 0);
+  assert.equal(summarizeQueue(state).saveable, 0);
 
   state = startJob(state, true);
   assert.equal(state.phase, "loading_model");
+  assert.equal(summarizeQueue(state).saveable, 0);
 
   state = setJobPhase(state, "processing");
   assert.equal(state.phase, "processing");
@@ -55,7 +64,7 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
     status: "warning",
     timing_ms: 420,
     inference_ms: 300,
-    warnings: ["Warning: truncated JPEG"],
+    warnings: [{ code: "damaged_input", detail: "truncated JPEG" }],
     oom_warning: true,
     error: null,
     original_preview_path: "/cache/orig_1.png",
@@ -88,6 +97,7 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
     cancelled: false,
     total_ms: 435,
     output_dir: "/photos/rustmatte-output",
+    display_output_dir: "/photos/rustmatte-output",
   });
   assert.equal(state.phase, "partial_failure");
   assert.equal(state.outputDir, "/photos/rustmatte-output");
@@ -96,6 +106,7 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
   assert.equal(summary.total, 2);
   assert.equal(summary.warning, 1);
   assert.equal(summary.failed, 1);
+  assert.equal(summary.saveable, 1);
   assert.equal(summary.oomWarnings, 1);
 
   state = selectAdjacent(state, 1);

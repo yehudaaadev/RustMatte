@@ -15,13 +15,18 @@ export type QueueItemStatus =
   | "warning"
   | "failed";
 
+export interface ItemWarning {
+  code: string;
+  detail: string;
+}
+
 export interface QueueItem {
   path: string;
   name: string;
   status: QueueItemStatus;
   timingMs?: number;
   inferenceMs?: number;
-  warnings: string[];
+  warnings: Array<ItemWarning | string>;
   oomWarning: boolean;
   error?: string;
   originalPreviewPath?: string;
@@ -35,6 +40,7 @@ export interface QueueItem {
 export interface RejectedItem {
   path: string;
   name: string;
+  reason_code?: string;
   reason: string;
 }
 
@@ -46,6 +52,7 @@ export interface QueueState {
   rejectedItems: RejectedItem[];
   lastError: string | null;
   outputDir: string | null;
+  displayOutputDir: string | null;
 }
 
 export interface ProgressPayload {
@@ -56,7 +63,7 @@ export interface ProgressPayload {
   status: string;
   timing_ms: number;
   inference_ms: number;
-  warnings: string[];
+  warnings: Array<ItemWarning | string>;
   oom_warning: boolean;
   error?: string | null;
   original_preview_path?: string | null;
@@ -73,6 +80,7 @@ export interface FinishedPayload {
   cancelled: boolean;
   total_ms: number;
   output_dir?: string | null;
+  display_output_dir?: string | null;
 }
 
 export function createInitialQueueState(): QueueState {
@@ -84,6 +92,7 @@ export function createInitialQueueState(): QueueState {
     rejectedItems: [],
     lastError: null,
     outputDir: null,
+    displayOutputDir: null,
   };
 }
 
@@ -164,6 +173,7 @@ export function startJob(state: QueueState, loadingModelFirst: boolean): QueueSt
     phase: loadingModelFirst ? "loading_model" : "processing",
     lastError: null,
     outputDir: null,
+    displayOutputDir: null,
     items: state.items.map((item) => ({
       ...item,
       status: "waiting",
@@ -247,6 +257,8 @@ export function finishJob(
     ...state,
     phase,
     outputDir: payload.output_dir ?? state.outputDir,
+    displayOutputDir:
+      payload.display_output_dir ?? payload.output_dir ?? state.displayOutputDir,
   };
 }
 
@@ -271,9 +283,13 @@ export function summarizeQueue(state: QueueState) {
   let warning = 0;
   let failed = 0;
   let oomWarnings = 0;
+  let saveable = 0;
 
   for (const item of state.items) {
     if (item.oomWarning) oomWarnings += 1;
+    if ((item.status === "done" || item.status === "warning") && Boolean(item.fullCutoutPath)) {
+      saveable += 1;
+    }
     switch (item.status) {
       case "waiting":
         waiting += 1;
@@ -301,6 +317,7 @@ export function summarizeQueue(state: QueueState) {
     warning,
     failed,
     completed: done + warning,
+    saveable,
     oomWarnings,
   };
 }

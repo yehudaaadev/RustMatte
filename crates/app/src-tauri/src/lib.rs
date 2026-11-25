@@ -69,7 +69,6 @@ pub struct ModelsStatusResponse {
 pub struct AboutInfo {
     pub version: String,
     pub license: String,
-    pub network_use: String,
     pub models_markdown: String,
     pub third_party_licenses_markdown: String,
 }
@@ -111,6 +110,12 @@ pub struct JobStatusEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ItemWarning {
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct JobProgressEvent {
     pub job_id: u64,
     pub index: usize,
@@ -120,7 +125,7 @@ pub struct JobProgressEvent {
     pub status: String,
     pub timing_ms: f64,
     pub inference_ms: f64,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<ItemWarning>,
     pub oom_warning: bool,
     pub error: Option<String>,
     pub original_preview_path: Option<String>,
@@ -139,6 +144,7 @@ pub struct JobFinishedEvent {
     pub cancelled: bool,
     pub total_ms: f64,
     pub output_dir: Option<String>,
+    pub display_output_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,9 +154,16 @@ pub struct SaveAllItem {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SaveSingleResult {
+    pub path: String,
+    pub display_path: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct SaveAllResult {
     pub saved_count: usize,
     pub output_dir: String,
+    pub display_output_dir: String,
 }
 
 fn parse_tier(tier_str: &str) -> ModelTier {
@@ -572,7 +585,7 @@ mod commands {
                     .unwrap_or("image")
                     .to_string();
 
-                let mut item_warnings: Vec<String> = Vec::new();
+                let mut item_warnings: Vec<ItemWarning> = Vec::new();
                 let oom_warning = image::image_dimensions(input_path)
                     .map(|(w, h)| {
                         (w as u64) * (h as u64) >= HUGE_IMAGE_PIXELS_THRESHOLD && max_side.is_none()
@@ -583,7 +596,10 @@ mod commands {
                     Ok((decoded, decode_warnings)) => {
                         for w in decode_warnings {
                             let Warning::DamagedInput(msg) = w;
-                            item_warnings.push(format!("Warning: {msg}"));
+                            item_warnings.push(ItemWarning {
+                                code: "damaged_input".to_string(),
+                                detail: msg,
+                            });
                         }
                         let preview_img = downscale_if_needed(decoded, max_side);
                         let res = preview::write_preview_image(&preview_dir, "orig", &preview_img);
@@ -646,9 +662,13 @@ mod commands {
                     Ok((output, active_device)) => {
                         for w in output.warnings {
                             let Warning::DamagedInput(msg) = w;
-                            let text = format!("Warning: {msg}");
-                            if !item_warnings.contains(&text) {
-                                item_warnings.push(text);
+                            if !item_warnings.iter().any(|existing| {
+                                existing.code == "damaged_input" && existing.detail == msg
+                            }) {
+                                item_warnings.push(ItemWarning {
+                                    code: "damaged_input".to_string(),
+                                    detail: msg,
+                                });
                             }
                         }
 
@@ -775,6 +795,8 @@ mod commands {
                 coord.finish(job_id);
             }
 
+            let out_dir_str = resolved_out_dir.map(|p| p.to_string_lossy().to_string());
+            let display_out_dir_str = out_dir_str.as_deref().map(validation::format_display_path);
             let _ = app_clone.emit(
                 "job_finished",
                 JobFinishedEvent {
@@ -783,7 +805,8 @@ mod commands {
                     failed,
                     cancelled,
                     total_ms: t_job.elapsed().as_secs_f64() * 1000.0,
-                    output_dir: resolved_out_dir.map(|p| p.to_string_lossy().to_string()),
+                    output_dir: out_dir_str,
+                    display_output_dir: display_out_dir_str,
                 },
             );
         });
@@ -806,7 +829,7 @@ mod commands {
         destination_path: String,
         input_paths: Vec<String>,
         background_hex: Option<String>,
-    ) -> Result<String, String> {
+    ) -> Result<SaveSingleResult, String> {
         tauri::async_runtime::spawn_blocking(move || {
             let src = std::fs::canonicalize(source_cutout_path.trim())
                 .map_err(|e| format!("Cutout file is missing or inaccessible: {e}"))?;
@@ -818,7 +841,9 @@ mod commands {
             let dest = validation::validate_save_destination(&destination_path, &input_bufs)?;
 
             export_cutout_to_dest(&src, &dest, background_hex.as_deref())?;
-            Ok(dest.to_string_lossy().to_string())
+            let path = dest.to_string_lossy().to_string();
+            let display_path = validation::format_display_path(&path);
+            Ok(SaveSingleResult { path, display_path })
         })
         .await
         .map_err(|e| format!("Save task failed: {e}"))?
@@ -854,9 +879,12 @@ mod commands {
                 saved_count += 1;
             }
 
+            let output_dir_str = dir.to_string_lossy().to_string();
+            let display_output_dir = validation::format_display_path(&output_dir_str);
             Ok(SaveAllResult {
                 saved_count,
-                output_dir: dir.to_string_lossy().to_string(),
+                output_dir: output_dir_str,
+                display_output_dir,
             })
         })
         .await
@@ -912,8 +940,6 @@ mod commands {
         AboutInfo {
             version: env!("CARGO_PKG_VERSION").to_string(),
             license: env!("CARGO_PKG_LICENSE").to_string(),
-            network_use: "RustMatte processes all images 100% locally. It contains zero telemetry, analytics, or image uploads. Network access occurs only when you explicitly confirm a one-time AI model download, and can be disabled completely via 'Never use the network' in Settings."
-                .to_string(),
             models_markdown: SHIPPED_MODELS_MD.to_string(),
             third_party_licenses_markdown: SHIPPED_THIRD_PARTY_LICENSES.to_string(),
         }

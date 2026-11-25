@@ -81,22 +81,36 @@ export interface Translations {
 
   originalLabel: string;
   cutoutLabel: string;
+  compareToggleBtn: string;
+  compareToggleActiveBtn: string;
+  compareToggleHint: string;
   sliderAriaLabel: string;
   zoomIn: string;
   zoomOut: string;
   zoomReset: string;
   panHint: string;
+  thumbPlaceholder: string;
   statsTitle: string;
   activeDeviceLabel: string;
   dimensionsLabel: string;
   inferenceTimeLabel: string;
   totalTimeLabel: string;
 
+  filterSupportedImages: string;
+  filterOnnxModel: string;
+  filterPngImage: string;
+  dialogBrowsePhotosTitle: string;
+  dialogBrowseFolderTitle: string;
+  dialogOutputFolderTitle: string;
+  dialogImportModelTitle: string;
+  dialogSavePngTitle: string;
+
   firstRunTitle: string;
   firstRunIntro: string;
   firstRunFileLabel: string;
   firstRunSizeLabel: string;
   firstRunHostLabel: string;
+  firstRunFallbackLabel: string;
   firstRunLicenseLabel: string;
   firstRunDownloadBtn: string;
   firstRunImportBtn: string;
@@ -111,6 +125,7 @@ export interface Translations {
   aboutVersionLabel: string;
   aboutLicenseLabel: string;
   aboutNetworkTitle: string;
+  aboutNetworkBody: string;
   aboutModelsTitle: string;
   aboutThirdPartyTitle: string;
   copyDiagnosticsBtn: string;
@@ -121,6 +136,15 @@ export interface Translations {
   dismissBtn: string;
   savedSingleNotice: string;
   savedAllNotice: string;
+  bannerJobDone: string;
+  bannerJobPartial: string;
+  bannerSavedSingle: string;
+  bannerSavedAll: string;
+  rejectedReasonInaccessible: string;
+  rejectedReasonReadDir: string;
+  rejectedReasonNotFileOrDir: string;
+  rejectedReasonUnsupported: string;
+  warningDamagedInput: string;
 
   errOfflineTitle: string;
   errOfflineFix: string;
@@ -226,16 +250,29 @@ export const dictionaries: Record<Lang, Translations> = {
 
     originalLabel: "Original",
     cutoutLabel: "Cutout",
+    compareToggleBtn: "Compare with original",
+    compareToggleActiveBtn: "Show cutout only",
+    compareToggleHint: "Compare with original photo (C)",
     sliderAriaLabel: "Before and after comparison position",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
     zoomReset: "Reset view",
     panHint: "Drag image to pan while zoomed",
+    thumbPlaceholder: "IMG",
     statsTitle: "Run Summary",
     activeDeviceLabel: "Device used",
     dimensionsLabel: "Resolution",
     inferenceTimeLabel: "Inference",
     totalTimeLabel: "Total",
+
+    filterSupportedImages: "Supported Images",
+    filterOnnxModel: "ONNX Model",
+    filterPngImage: "PNG Image",
+    dialogBrowsePhotosTitle: "Select Photos",
+    dialogBrowseFolderTitle: "Select Folder",
+    dialogOutputFolderTitle: "Choose Output Folder",
+    dialogImportModelTitle: "Select ONNX Model File",
+    dialogSavePngTitle: "Save Cutout PNG",
 
     firstRunTitle: "One-Time AI Model Setup",
     firstRunIntro:
@@ -243,6 +280,7 @@ export const dictionaries: Record<Lang, Translations> = {
     firstRunFileLabel: "File",
     firstRunSizeLabel: "Size",
     firstRunHostLabel: "Source host",
+    firstRunFallbackLabel: "fallback",
     firstRunLicenseLabel: "Weight license",
     firstRunDownloadBtn: "Download",
     firstRunImportBtn: "Choose a file I already have",
@@ -258,6 +296,8 @@ export const dictionaries: Record<Lang, Translations> = {
     aboutVersionLabel: "Version",
     aboutLicenseLabel: "App License",
     aboutNetworkTitle: "Network Use",
+    aboutNetworkBody:
+      "RustMatte processes all images 100% locally. It contains zero telemetry, analytics, or image uploads. Network access occurs only when you explicitly confirm a one-time AI model download, and can be disabled completely via 'Never use the network' in Options.",
     aboutModelsTitle: "AI Models & Dataset Notes",
     aboutThirdPartyTitle: "Third-Party Licenses",
     copyDiagnosticsBtn: "Copy diagnostic info",
@@ -268,6 +308,15 @@ export const dictionaries: Record<Lang, Translations> = {
     dismissBtn: "Dismiss",
     savedSingleNotice: "Saved PNG to",
     savedAllNotice: "Saved cutouts to",
+    bannerJobDone: "Finished cleanly ({processed}/{total} in {sec}s).",
+    bannerJobPartial: "Finished with some failures ({processed}/{total} ok in {sec}s).",
+    bannerSavedSingle: "Saved PNG to {path}",
+    bannerSavedAll: "Saved {count} cutouts to {dir}",
+    rejectedReasonInaccessible: "File or folder could not be accessed",
+    rejectedReasonReadDir: "Failed to read folder contents",
+    rejectedReasonNotFileOrDir: "Item is not a regular file or folder",
+    rejectedReasonUnsupported: "Unsupported image format (use JPG, JPEG, PNG, WebP, or BMP)",
+    warningDamagedInput: "Image file may be damaged or incomplete",
 
     errOfflineTitle: "Network access is turned off in Settings.",
     errOfflineFix:
@@ -295,7 +344,7 @@ export const dictionaries: Record<Lang, Translations> = {
       "Review the technical details below or try again with a smaller Max Output Size.",
 
     shortcutsHint:
-      "Shortcuts: Ctrl+O open, Ctrl+Enter process, Ctrl+S save, Up/Down switch photo, Esc cancel",
+      "Shortcuts: Ctrl+O open, Ctrl+Enter process, C compare, Ctrl+S save, Up/Down switch photo, Esc cancel",
   },
   id: {
     appTitle: "RustMatte",
@@ -381,16 +430,29 @@ export const dictionaries: Record<Lang, Translations> = {
 
     originalLabel: "Asli",
     cutoutLabel: "Hasil",
-    sliderAriaLabel: "Geser perbandingan sebelum dan sesudah",
+    compareToggleBtn: "Bandingkan dengan asli",
+    compareToggleActiveBtn: "Lihat hasil saja",
+    compareToggleHint: "Bandingkan dengan foto asli (C)",
+    sliderAriaLabel: "Geser perbandingan foto asli dan hasil",
     zoomIn: "Perbesar",
     zoomOut: "Perkecil",
     zoomReset: "Reset tampilan",
     panHint: "Geser gambar untuk menggeser area saat diperbesar",
+    thumbPlaceholder: "FOTO",
     statsTitle: "Ringkasan Proses",
     activeDeviceLabel: "Perangkat dipakai",
     dimensionsLabel: "Resolusi",
     inferenceTimeLabel: "Inferensi",
     totalTimeLabel: "Total",
+
+    filterSupportedImages: "Gambar yang Didukung",
+    filterOnnxModel: "Model ONNX",
+    filterPngImage: "Gambar PNG",
+    dialogBrowsePhotosTitle: "Pilih Foto",
+    dialogBrowseFolderTitle: "Pilih Folder",
+    dialogOutputFolderTitle: "Pilih Folder Simpan",
+    dialogImportModelTitle: "Pilih File Model ONNX",
+    dialogSavePngTitle: "Simpan Hasil PNG",
 
     firstRunTitle: "Penyiapan Model AI Pertama Kali",
     firstRunIntro:
@@ -398,6 +460,7 @@ export const dictionaries: Record<Lang, Translations> = {
     firstRunFileLabel: "Nama file",
     firstRunSizeLabel: "Ukuran",
     firstRunHostLabel: "Sumber host",
+    firstRunFallbackLabel: "cadangan",
     firstRunLicenseLabel: "Lisensi bobot",
     firstRunDownloadBtn: "Unduh",
     firstRunImportBtn: "Pilih file yang sudah ada",
@@ -413,6 +476,8 @@ export const dictionaries: Record<Lang, Translations> = {
     aboutVersionLabel: "Versi",
     aboutLicenseLabel: "Lisensi Aplikasi",
     aboutNetworkTitle: "Penggunaan Jaringan",
+    aboutNetworkBody:
+      "RustMatte memproses semua foto 100% secara lokal tanpa telemetri, analitik, atau unggahan ke server. Jaringan hanya digunakan jika Anda menyetujui unduhan model AI pertama kali, dan bisa dimatikan penuh lewat opsi 'Jangan pernah pakai internet'.",
     aboutModelsTitle: "Model AI & Catatan Dataset",
     aboutThirdPartyTitle: "Lisensi Pihak Ketiga",
     copyDiagnosticsBtn: "Salin info diagnostik",
@@ -423,6 +488,15 @@ export const dictionaries: Record<Lang, Translations> = {
     dismissBtn: "Tutup",
     savedSingleNotice: "PNG disimpan ke",
     savedAllNotice: "Hasil disimpan ke",
+    bannerJobDone: "Selesai diproses ({processed}/{total} dalam {sec} dtk).",
+    bannerJobPartial: "Selesai dengan kendala ({processed}/{total} berhasil dalam {sec} dtk).",
+    bannerSavedSingle: "PNG disimpan ke {path}",
+    bannerSavedAll: "{count} hasil disimpan ke {dir}",
+    rejectedReasonInaccessible: "File atau folder tidak dapat diakses",
+    rejectedReasonReadDir: "Gagal membaca isi folder",
+    rejectedReasonNotFileOrDir: "Item bukan file atau folder biasa",
+    rejectedReasonUnsupported: "Format gambar tidak didukung (gunakan JPG, JPEG, PNG, WebP, atau BMP)",
+    warningDamagedInput: "File gambar tampak rusak atau tidak utuh",
 
     errOfflineTitle: "Akses internet dimatikan di Pengaturan.",
     errOfflineFix:
@@ -450,6 +524,6 @@ export const dictionaries: Record<Lang, Translations> = {
       "Buka detail teknis di bawah atau coba ulang dengan Batas Resolusi Output lebih kecil.",
 
     shortcutsHint:
-      "Pintasan: Ctrl+O buka, Ctrl+Enter proses, Ctrl+S simpan, Atas/Bawah pindah foto, Esc batal",
+      "Pintasan: Ctrl+O buka, Ctrl+Enter proses, C bandingkan, Ctrl+S simpan, Atas/Bawah pindah foto, Esc batal",
   },
 };

@@ -7,6 +7,20 @@
   import { dictionaries, type Lang } from "$lib/i18n";
   import { mapTechnicalError, type FriendlyError } from "$lib/errors";
   import {
+    formatDisplayPath,
+    renderRejectedReason,
+    renderStatusBanner,
+    renderWarningItem,
+    type StatusBanner,
+  } from "$lib/banners";
+  import {
+    createInitialSliderState,
+    isComparingWithOriginal,
+    resetSliderForNewPhoto,
+    setSliderPosition,
+    toggleCompareWithOriginal,
+  } from "$lib/slider";
+  import {
     applyProgressEvent,
     clearQueue as clearQueueState,
     createInitialQueueState,
@@ -43,7 +57,6 @@
   interface AboutInfo {
     version: string;
     license: string;
-    network_use: string;
     models_markdown: string;
     third_party_licenses_markdown: string;
   }
@@ -102,10 +115,12 @@
 
   let isDragOver = $state(false);
   let activeError = $state<FriendlyError | null>(null);
-  let statusNotice = $state<string | null>(null);
+  let statusBanner = $state<StatusBanner | null>(null);
 
-  // Comparison slider, zoom & pan state
-  let sliderPos = $state(50);
+  // Comparison slider, zoom & pan state (defaults to 100% cutout visible)
+  let sliderState = $state(createInitialSliderState());
+  let sliderPos = $derived(sliderState.sliderPos);
+  let isComparing = $derived(isComparingWithOriginal(sliderState));
   let isDraggingSlider = $state(false);
   let zoom = $state(1);
   let panX = $state(0);
@@ -228,11 +243,21 @@
         if (!p) return;
         qState = finishJob(qState, p);
         if (p.cancelled) {
-          statusNotice = t.stateCancelledSummary;
+          statusBanner = { code: "job_cancelled" };
         } else if (p.failed > 0) {
-          statusNotice = t.statePartialSummary;
+          statusBanner = {
+            code: "job_partial",
+            processed: p.processed,
+            total: p.processed + p.failed,
+            durationSec: p.total_ms / 1000,
+          };
         } else {
-          statusNotice = `${t.stateDoneSummary} (${p.processed}/${p.processed + p.failed} in ${(p.total_ms / 1000).toFixed(2)}s)`;
+          statusBanner = {
+            code: "job_done",
+            processed: p.processed,
+            total: p.processed + p.failed,
+            durationSec: p.total_ms / 1000,
+          };
         }
       })
     );
@@ -300,11 +325,11 @@
 
   async function addPathsToQueue(rawPaths: string[]) {
     activeError = null;
-    statusNotice = null;
+    statusBanner = null;
     try {
       const expanded: {
         valid_paths: string[];
-        rejected: { path: string; name: string; reason: string }[];
+        rejected: { path: string; name: string; reason_code?: string; reason: string }[];
       } = await invoke("expand_inputs", { paths: rawPaths });
       qState = enqueuePaths(qState, expanded.valid_paths, expanded.rejected);
       if (expanded.valid_paths.length === 0 && expanded.rejected.length > 0) {
@@ -317,11 +342,12 @@
 
   async function browsePhotos() {
     const selected = await open({
+      title: t.dialogBrowsePhotosTitle,
       multiple: true,
       directory: false,
       filters: [
         {
-          name: "Supported Images",
+          name: t.filterSupportedImages,
           extensions: ["jpg", "jpeg", "png", "webp", "bmp"],
         },
       ],
@@ -335,6 +361,7 @@
 
   async function browseFolder() {
     const selected = await open({
+      title: t.dialogBrowseFolderTitle,
       directory: true,
       multiple: false,
     });
@@ -345,6 +372,7 @@
 
   async function chooseOutputFolder() {
     const selected = await open({
+      title: t.dialogOutputFolderTitle,
       directory: true,
       multiple: false,
     });
@@ -383,9 +411,10 @@
 
   async function importLocalModelFile() {
     const selected = await open({
+      title: t.dialogImportModelTitle,
       multiple: false,
       directory: false,
-      filters: [{ name: "ONNX Model", extensions: ["onnx"] }],
+      filters: [{ name: t.filterOnnxModel, extensions: ["onnx"] }],
     });
     if (typeof selected !== "string" || !selected.trim()) return;
     downloadError = null;
@@ -414,7 +443,7 @@
     }
 
     activeError = null;
-    statusNotice = null;
+    statusBanner = null;
     const paths = qState.items.map((item) => item.path);
     qState = startJob(qState, true);
 
@@ -456,18 +485,25 @@
     try {
       const stem = selectedItem.name.replace(/\.[^.]+$/, "");
       const dest = await save({
+        title: t.dialogSavePngTitle,
         defaultPath: `${stem}_cutout.png`,
-        filters: [{ name: "PNG Image", extensions: ["png"] }],
+        filters: [{ name: t.filterPngImage, extensions: ["png"] }],
       });
       if (!dest) return;
 
-      const savedPath: string = await invoke("save_cutout_png", {
-        sourceCutoutPath: selectedItem.fullCutoutPath,
-        destinationPath: dest,
-        inputPaths: [selectedItem.path],
-        backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
-      });
-      statusNotice = `${t.savedSingleNotice}: ${savedPath}`;
+      const saved: { path: string; display_path: string } = await invoke(
+        "save_cutout_png",
+        {
+          sourceCutoutPath: selectedItem.fullCutoutPath,
+          destinationPath: dest,
+          inputPaths: [selectedItem.path],
+          backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
+        }
+      );
+      statusBanner = {
+        code: "saved_single",
+        displayPath: saved.display_path,
+      };
     } catch (e) {
       activeError = mapTechnicalError(String(e), t);
     }
@@ -481,26 +517,39 @@
 
     let targetDir = outputFolder ?? qState.outputDir;
     if (!targetDir) {
-      const picked = await open({ directory: true, multiple: false });
+      const picked = await open({
+        title: t.dialogOutputFolderTitle,
+        directory: true,
+        multiple: false,
+      });
       if (typeof picked !== "string" || !picked.trim()) return;
       targetDir = picked;
     }
 
     activeError = null;
     try {
-      const res: { saved_count: number; output_dir: string } = await invoke(
-        "save_all_cutouts",
-        {
-          items: readyItems.map((i) => ({
-            source_cutout_path: i.fullCutoutPath,
-            input_path: i.path,
-          })),
-          outputDir: targetDir,
-          backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
-        }
-      );
-      qState = { ...qState, outputDir: res.output_dir };
-      statusNotice = `${t.savedAllNotice}: ${res.output_dir} (${res.saved_count})`;
+      const res: {
+        saved_count: number;
+        output_dir: string;
+        display_output_dir: string;
+      } = await invoke("save_all_cutouts", {
+        items: readyItems.map((i) => ({
+          source_cutout_path: i.fullCutoutPath,
+          input_path: i.path,
+        })),
+        outputDir: targetDir,
+        backgroundHex: backgroundMode === "solid" ? backgroundHex : null,
+      });
+      qState = {
+        ...qState,
+        outputDir: res.output_dir,
+        displayOutputDir: res.display_output_dir,
+      };
+      statusBanner = {
+        code: "saved_all",
+        count: res.saved_count,
+        displayDir: res.display_output_dir,
+      };
     } catch (e) {
       activeError = mapTechnicalError(String(e), t);
     }
@@ -571,7 +620,7 @@
   }
 
   function resetViewTransform() {
-    sliderPos = 50;
+    sliderState = resetSliderForNewPhoto(sliderState);
     zoom = 1;
     panX = 0;
     panY = 0;
@@ -595,7 +644,7 @@
     if (isDraggingSlider) {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      sliderPos = (x / rect.width) * 100;
+      sliderState = setSliderPosition(sliderState, (x / rect.width) * 100);
       return;
     }
     if (isPanning && zoom > 1) {
@@ -641,16 +690,16 @@
   function handleSliderKeyDown(e: KeyboardEvent) {
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      sliderPos = Math.max(0, sliderPos - 5);
+      sliderState = setSliderPosition(sliderState, sliderPos - 5);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      sliderPos = Math.min(100, sliderPos + 5);
+      sliderState = setSliderPosition(sliderState, sliderPos + 5);
     } else if (e.key === "Home") {
       e.preventDefault();
-      sliderPos = 0;
+      sliderState = setSliderPosition(sliderState, 0);
     } else if (e.key === "End") {
       e.preventDefault();
-      sliderPos = 100;
+      sliderState = setSliderPosition(sliderState, 100);
     } else if (e.key === "+" || e.key === "=") {
       e.preventDefault();
       adjustZoom(0.25);
@@ -718,13 +767,21 @@
       activeEl instanceof HTMLTextAreaElement ||
       activeEl?.getAttribute("role") === "slider";
 
+    if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "c" && cutoutPreviewUrl && originalPreviewUrl) {
+      e.preventDefault();
+      sliderState = toggleCompareWithOriginal(sliderState);
+      return;
+    }
+
     if (!isInput && qState.items.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         qState = selectAdjacent(qState, 1);
+        resetViewTransform();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         qState = selectAdjacent(qState, -1);
+        resetViewTransform();
       }
     }
   }
@@ -799,7 +856,7 @@
               <strong>{t.rejectedFilesBanner} ({qState.rejectedItems.length})</strong>
               <ul class="compact-list">
                 {#each qState.rejectedItems.slice(0, 5) as rej}
-                  <li>{rej.name}: {rej.reason}</li>
+                  <li>{rej.name}: {renderRejectedReason(rej, t)}</li>
                 {/each}
               </ul>
             </div>
@@ -847,7 +904,7 @@
                     {#if thumbPath}
                       <img src={convertFileSrc(thumbPath)} alt="" loading="lazy" />
                     {:else}
-                      <span>IMG</span>
+                      <span>{t.thumbPlaceholder}</span>
                     {/if}
                   </div>
                   <div class="row-meta">
@@ -887,10 +944,10 @@
           </div>
         {/if}
 
-        {#if statusNotice}
+        {#if statusBanner}
           <div class="banner info" role="status">
-            <span>{statusNotice}</span>
-            <button class="text-btn" onclick={() => (statusNotice = null)}>{t.dismissBtn}</button>
+            <span>{renderStatusBanner(statusBanner, t)}</span>
+            <button class="text-btn" onclick={() => (statusBanner = null)}>{t.dismissBtn}</button>
           </div>
         {/if}
 
@@ -902,7 +959,11 @@
 
         {#if selectedItem && selectedItem.warnings.length > 0}
           <div class="banner warning" role="status">
-            <span>{t.damagedWarningPrefix}: {selectedItem.warnings.join("; ")}</span>
+            <span>
+              {t.damagedWarningPrefix}: {selectedItem.warnings
+                .map((w) => renderWarningItem(w, t))
+                .join("; ")}
+            </span>
           </div>
         {/if}
 
@@ -912,7 +973,7 @@
               <strong>{t.rejectedFilesBanner} ({qState.rejectedItems.length})</strong>
               <ul class="compact-list">
                 {#each qState.rejectedItems.slice(0, 4) as rej}
-                  <li>{rej.name}: {rej.reason}</li>
+                  <li>{rej.name}: {renderRejectedReason(rej, t)}</li>
                 {/each}
               </ul>
             </div>
@@ -956,6 +1017,15 @@
               <span class="zoom-readout">{Math.round(zoom * 100)}%</span>
               <button class="secondary-btn sm" onclick={() => adjustZoom(0.25)}>{t.zoomIn}</button>
               <button class="secondary-btn sm" onclick={resetViewTransform}>{t.zoomReset}</button>
+              <button
+                type="button"
+                class="secondary-btn sm {isComparing ? 'toggle-active' : ''}"
+                aria-pressed={isComparing}
+                title={t.compareToggleHint}
+                onclick={() => (sliderState = toggleCompareWithOriginal(sliderState))}
+              >
+                {isComparing ? t.compareToggleActiveBtn : t.compareToggleBtn}
+              </button>
             </div>
             {#if zoom > 1}
               <span class="muted small">{t.panHint}</span>
@@ -983,7 +1053,7 @@
             </div>
 
             <div
-              class="slider-handle"
+              class="slider-handle {sliderPos <= 0 ? 'at-start' : sliderPos >= 100 ? 'at-end' : ''}"
               style:left={`${sliderPos}%`}
               role="slider"
               tabindex="0"
@@ -1002,8 +1072,12 @@
               <div class="handle-knob" aria-hidden="true">||</div>
             </div>
 
-            <span class="canvas-tag left">{t.originalLabel}</span>
-            <span class="canvas-tag right">{t.cutoutLabel}</span>
+            {#if sliderPos > 8}
+              <span class="canvas-tag left">{t.originalLabel}</span>
+            {/if}
+            {#if sliderPos < 92}
+              <span class="canvas-tag right">{t.cutoutLabel}</span>
+            {/if}
           </div>
 
           {#if selectedItem}
@@ -1098,8 +1172,8 @@
 
         <div class="field">
           <span class="field-label">{t.outputFolderLabel}</span>
-          <div class="folder-box" title={outputFolder ?? t.outputFolderAuto}>
-            {outputFolder ?? t.outputFolderAuto}
+          <div class="folder-box" title={outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}>
+            {outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}
           </div>
           <div class="inline-actions">
             <button class="secondary-btn sm" onclick={chooseOutputFolder} disabled={isBusy}>
@@ -1141,9 +1215,9 @@
             <button
               class="secondary-btn"
               onclick={saveAllCutouts}
-              disabled={summary.completed === 0 || isBusy}
+              disabled={summary.saveable === 0 || isBusy}
             >
-              {t.saveAllBtn} ({summary.completed})
+              {t.saveAllBtn} ({summary.saveable})
             </button>
           </div>
 
@@ -1171,7 +1245,7 @@
             <dt>{t.firstRunSizeLabel}</dt>
             <dd>{setupModelInfo.expected_size_mb.toFixed(1)} MB</dd>
             <dt>{t.firstRunHostLabel}</dt>
-            <dd>{setupModelInfo.primary_host} (fallback: {setupModelInfo.fallback_host})</dd>
+            <dd>{setupModelInfo.primary_host} ({t.firstRunFallbackLabel}: {setupModelInfo.fallback_host})</dd>
             <dt>{t.firstRunLicenseLabel}</dt>
             <dd>{setupModelInfo.license}</dd>
           </dl>
@@ -1255,7 +1329,7 @@
             </p>
 
             <h3>{t.aboutNetworkTitle}</h3>
-            <p>{aboutInfo.network_use}</p>
+            <p>{t.aboutNetworkBody}</p>
 
             <h3>{t.aboutModelsTitle}</h3>
             <pre class="doc-pre">{aboutInfo.models_markdown}</pre>
@@ -1732,6 +1806,20 @@
     color: #ffffff;
     font-size: 11px;
     font-weight: 700;
+  }
+
+  .slider-handle.at-start .handle-knob {
+    transform: translateX(12px);
+  }
+
+  .slider-handle.at-end .handle-knob {
+    transform: translateX(-12px);
+  }
+
+  .toggle-active {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
   }
 
   .canvas-tag {

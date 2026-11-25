@@ -7,10 +7,31 @@ use serde::Serialize;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
+/// Strips Windows extended-length verbatim prefixes (`\\?\C:\...`, `\\?\UNC\...`) for UI display only.
+/// Leaves internal canonical paths untouched for validation and filesystem calls.
+#[must_use]
+pub fn format_display_path(raw: &str) -> String {
+    if raw.len() >= 8 && raw[..4].eq(r"\\?\") && raw[4..8].eq_ignore_ascii_case(r"UNC\") {
+        return format!(r"\\{}", &raw[8..]);
+    }
+    if let Some(rest) = raw.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        if bytes.len() >= 2
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes.len() == 2 || bytes[2] == b'\\' || bytes[2] == b'/')
+        {
+            return rest.to_string();
+        }
+    }
+    raw.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RejectedInput {
     pub path: String,
     pub name: String,
+    pub reason_code: String,
     pub reason: String,
 }
 
@@ -79,6 +100,7 @@ pub fn expand_input_paths(raw_paths: &[String]) -> ExpandedInputs {
             rejected.push(RejectedInput {
                 path: trimmed.to_string(),
                 name,
+                reason_code: "inaccessible".to_string(),
                 reason: "File or folder could not be accessed".to_string(),
             });
             continue;
@@ -110,6 +132,7 @@ pub fn expand_input_paths(raw_paths: &[String]) -> ExpandedInputs {
                     rejected.push(RejectedInput {
                         path: canonical.to_string_lossy().to_string(),
                         name,
+                        reason_code: "read_dir_failed".to_string(),
                         reason: format!("Failed to read folder: {e}"),
                     });
                 }
@@ -121,6 +144,7 @@ pub fn expand_input_paths(raw_paths: &[String]) -> ExpandedInputs {
             rejected.push(RejectedInput {
                 path: canonical.to_string_lossy().to_string(),
                 name,
+                reason_code: "not_file_or_dir".to_string(),
                 reason: "Item is not a regular file or folder".to_string(),
             });
             continue;
@@ -130,6 +154,7 @@ pub fn expand_input_paths(raw_paths: &[String]) -> ExpandedInputs {
             rejected.push(RejectedInput {
                 path: canonical.to_string_lossy().to_string(),
                 name,
+                reason_code: "unsupported_format".to_string(),
                 reason: "Unsupported image format (supported: JPG, JPEG, PNG, WebP, BMP)"
                     .to_string(),
             });
@@ -419,5 +444,31 @@ mod tests {
         assert_eq!(outs[2].file_name().unwrap(), "unique.png");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn formats_windows_extended_paths_for_display_cross_platform() {
+        assert_eq!(
+            format_display_path(r"\\?\C:\Users\Admin\Downloads"),
+            r"C:\Users\Admin\Downloads"
+        );
+        assert_eq!(
+            format_display_path(r"\\?\d:\photos\cutout.png"),
+            r"d:\photos\cutout.png"
+        );
+        assert_eq!(format_display_path(r"\\?\E:"), r"E:");
+        assert_eq!(
+            format_display_path(r"\\?\UNC\fileserver\share\cutouts"),
+            r"\\fileserver\share\cutouts"
+        );
+        assert_eq!(format_display_path(r"\\?\unc\nas\photos"), r"\\nas\photos");
+        assert_eq!(
+            format_display_path(r"\\?\Volume{12345678-1234-1234-1234-1234567890ab}\dir"),
+            r"\\?\Volume{12345678-1234-1234-1234-1234567890ab}\dir"
+        );
+        assert_eq!(
+            format_display_path("/home/alice/pictures"),
+            "/home/alice/pictures"
+        );
     }
 }

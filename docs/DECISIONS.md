@@ -200,6 +200,13 @@ Format:
 - Reason: In pinned `tauri = "=2.12.7"`, `is_dev()` checks `!cfg!(feature = "custom-protocol")`, so plain `cargo build --release -p rustmatte-app` compiled `http://localhost:1420` into the binary and produced WebView2 `ERR_CONNECTION_REFUSED` while appearing alive via process-level checks. Putting `custom-protocol` in `default` would disable `is_dev()` during `npm run tauri dev`, so a compile-time release guard + CI marker check + real UI startup log is safer and unambiguous.
 - Alternatives considered: Making `custom-protocol` a default Cargo feature (breaks `npm run tauri dev` `devUrl` loading because Tauri v2 CLI does not pass `--no-default-features` automatically on `tauri dev`), keeping undocumented `cargo build --release` hazard.
 
+### D-029: Cutout-First Comparison Default, Display-Only Path Formatting, and Structured Cross-Layer Localization
+- Date: 2026-11-25
+- Decision: Default comparison preview to cutout-only (`sliderPos = 0`) whenever a photo finishes or is selected, keeping user-adjusted split position remembered within the session via a `"Compare with original"` toolbar toggle and `C` keyboard shortcut; strip Windows extended-length prefixes (`\\?\` / `\\?\UNC\`) for UI display only while retaining canonical `PathBuf` internally; replace Rust-formatted English banners/warnings/rejection reasons and dialog titles/filters with typed message codes rendered reactively in `en` and natural `id`; and count only saveable finished cutouts (`fullCutoutPath` present) in `Save all (N)`. Keep `device: "auto"` untouched pending explicit owner confirmation on whether to revert desktop default to `"cpu"` per `D-017`/`D-022`.
+- Status: accepted
+- Reason: Showing the finished cutout first matches user expectation immediately after processing, structured message codes allow live EN/ID switching on active banners without stale frozen strings, and display-only prefix stripping prevents confusing `\\?\C:\...` banners without breaking canonical path checks.
+- Alternatives considered: Stripping `\\?\` internally (breaks long Windows path canonical equality checks), leaving `statusNotice` as a pre-formatted string (breaks live language switches).
+
 ---
 
 ## Superseded Decisions

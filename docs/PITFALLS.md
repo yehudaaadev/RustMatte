@@ -211,3 +211,9 @@ Format:
   1. Never add `custom-protocol` to `default` features (doing so turns off `tauri::is_dev()` during `npm run tauri dev`); declare optional `custom-protocol = ["tauri/custom-protocol"]` and enforce `#[cfg(all(not(debug_assertions), dev, not(test)))] compile_error!(...)` in `crates/app/src-tauri/src/lib.rs` (`D-028`).
   2. Emit a frontend-mounted readiness signal (`notify_frontend_ready`) to `$APPCACHE/startup.log` (`ui_ready mode=custom-protocol origin=http://tauri.localhost`) and verify port `1420` has zero connection activity during offline launch tests.
   3. Add a binary marker check in `.github/workflows/release.yml` across Windows, macOS, and Linux failing any build in `dev-url` mode.
+
+### P-034: Windows `\\?\` Extended Paths and Frozen Language Strings in Active Banners
+- Date: 2026-11-25
+- Symptom: Save confirmation banners displayed `Saved cutouts to: \\?\C:\Users\...` in English even after switching the UI language to Indonesian.
+- Cause: `std::fs::canonicalize()` on Windows returns extended-length verbatim paths (`\\?\C:\...`), and `statusNotice` stored a pre-formatted string created at the moment an action completed rather than reactive message codes.
+- Fix or avoidance: Keep canonical paths strictly for backend validation/OS commands, derive a clean display path via `format_display_path` (`\\?\C:\...` -> `C:\...`, `\\?\UNC\...` -> `\\...`), and emit typed banner/warning/rejection codes from Rust so `EN`/`ID` switching updates every visible banner live.
