@@ -36,8 +36,15 @@ Lightweight command-line interface binary using `clap` (derive). Thin wrapper ar
 - `src/main.rs`: Argument parsing (`rustmatte <INPUT> [-o <OUTPUT>] [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite] [--skip-existing] [--max-side N] [--recursive] [--yes] [--no-download] [--verbose]`), prefetch subcommand (`rustmatte models [list|download]`), interactive download disclosure/consent (`[y/N]`), atomic file creation via temp files, warning output to stderr, and `--verbose` per-stage execution timing breakdown. Returns exit codes: `0` (all ok), `1` (total failure / bad args), `2` (partial failure).
 - `src/batch.rs`: Batch image discovery, recursive directory traversal with symlink traversal boundaries, batch limit warnings (>1,000 files), and deterministic collision resolution (conflicting files with identical stems in the same folder resolve to `<stem>_<ext>.png`).
 
-### `crates/app` (Planned for Phase 3)
-Desktop application using Tauri 2 with a web frontend (Svelte/TypeScript). Thin wrapper around `crates/core`.
+### `crates/app` (Phase 3A Foundation & Phase 3B UI/UX Implemented)
+Desktop application using Tauri 2 (`=2.12.7`) and Svelte 5 (`5.59.1`) + TypeScript (`6.0.3`). Thin wrapper around `rustmatte-core`.
+- `src-tauri/src/lib.rs`: Tauri command surface (`get_models_status`, `expand_inputs`, `download_model`, `import_model_file`, `process_images`, `cancel_job`, `save_cutout_png`, `save_all_cutouts`, `open_output_folder`, `get_settings`, `set_settings`, `get_about_info`, `get_diagnostic_info`) and lifecycle cleanup (`RunEvent::Exit` cancels active jobs and wipes preview cache).
+- `src-tauri/src/state.rs`: `SessionCache` keeping at most one loaded `Remover` per `ModelTier` across jobs (reloaded only on option changes), `RefineLevel` (`none`/`light`/`standard`), and `JobCoordinator` for single-active-job tracking and atomic cancellation.
+- `src-tauri/src/preview.rs`: Bounded preview cache (`<= 1600 px` longest side, `128 MB` / `120` files cap, startup and exit cleanup) plus solid-background RGB compositing for PNG export. Full-resolution image data never crosses Tauri IPC; previews are written to `$APPCACHE/previews/` and loaded in the webview via `convertFileSrc` (`assetProtocol` scoped strictly to `$APPCACHE/previews/**`).
+- `src-tauri/src/validation.rs`: Canonical input/output path validation, folder expansion, extension filtering, deterministic batch collision resolution (`<stem>_<ext>.png`), and overwrite protection against source files.
+- `src-tauri/src/settings.rs`: Atomic JSON persistence (`settings.json` in OS `app_config_dir`) covering language, system/light/dark theme, tier, device, refine level, background color mode, output folder, and `never_use_network`.
+- `src/lib/{i18n.ts,queue.ts,errors.ts}` & `src/routes/+page.svelte`: Typed EN/ID dictionaries, pure queue reducer/state machine, friendly error mapper with technical details expander, windowed thumbnail queue, zoom/pan accessible comparison slider, first-run download/manual-import dialog, About & Licenses modal (from shipped `MODELS.md` / `THIRD_PARTY_LICENSES.md`), and keyboard shortcuts.
+- Security posture (strict CSP, minimal `dialog:allow-open`/`dialog:allow-save` capabilities, no `shell` or `fs` plugins, release devtools disabled) is documented in `docs/SECURITY_MODEL.md`.
 
 ### `web/` (Planned for v2)
 WebAssembly and PWA implementation for browser-based offline processing.
@@ -64,17 +71,22 @@ WebAssembly and PWA implementation for browser-based offline processing.
 - Early downscaling (`--max-side <N>`): Resizes input image immediately after decode if dimensions exceed N, bounding peak memory and cutting postprocessing time by up to 98% on 24MP images.
 - Immediate deallocation: raw image buffers dropped immediately after saving to disk.
 
-## Model Storage and Download Flow
+## Model, Settings, and Cache Storage
 - Models are never committed to git and never bundled into the v1.0 installer.
-- On first launch, the required model downloads to the user's OS application data directory:
-  - Windows: `%LOCALAPPDATA%\RustMatte\models\` (planned)
-  - macOS: `~/Library/Application Support/RustMatte/models/` (planned)
-  - Linux: `~/.local/share/RustMatte/models/` (planned)
-- Every downloaded model file is verified with SHA-256 before use.
-- The application is 100% offline once the model file is cached.
+- Settings (`settings.json`, atomic write) live in the OS app-config directory (`io.github.yehudaaadev.rustmatte`):
+  - Windows: `%APPDATA%\io.github.yehudaaadev.rustmatte\settings.json`
+  - macOS: `~/Library/Application Support/io.github.yehudaaadev.rustmatte/settings.json`
+  - Linux: `~/.config/io.github.yehudaaadev.rustmatte/settings.json`
+- Preview cache (`<= 1600 px` PNGs, wiped on startup and exit) lives in OS app-cache (`io.github.yehudaaadev.rustmatte/previews/`).
+- Downloaded AI models (`.onnx`, SHA-256 verified) live in OS local data directory:
+  - Windows: `%LOCALAPPDATA%\RustMatte\models\`
+  - macOS: `~/Library/Application Support/RustMatte/models/`
+  - Linux: `~/.local/share/RustMatte/models/`
+- The application is 100% offline once the model file is cached (and blocks all downloads when `"Never use the network"` is enabled).
 
-## Platform Strategy Summary
-- Windows: Primary target for v1.0 desktop app via Tauri 2; full manual testing. Installer handles WebView2 bootstrapper.
-- macOS and Linux: Experimental for v1.0; built and tested in CI from Phase 0.
-- Web Browser (WASM/PWA): Planned for v2.0 to support mobile devices and tablets locally.
-- Android: Planned for v3.0 after desktop application is complete and stable.
+## Platform Strategy and Packaging Summary
+- Windows (`x86_64-pc-windows-msvc`): Primary v1.0 target; NSIS installer (`RustMatte_<ver>_x64-setup.exe`) with WebView2 `embedBootstrapper` (`~1.8 MB`). ONNX Runtime (`ort 2.0.0-rc.15`) is statically linked into `rustmatte-app.exe` on Windows x64 (verified by PE import inspection and isolated clean-directory install + launch).
+- macOS (`aarch64-apple-darwin`, experimental): `.dmg` bundle built unsigned on `macos-latest`; Intel `x86_64` Macs are out of scope for v0.1.
+- Linux (`x86_64-unknown-linux-gnu`, experimental): `.AppImage` and `.deb` built on `ubuntu-22.04` targeting system `libwebkit2gtk-4.1-0` and `libgtk-3-0`.
+- Release workflow (`.github/workflows/release.yml`) builds CLI archives + desktop installers on `v*` tags and publishes a **draft prerelease** with consolidated `SHA256SUMS.txt` (release procedure in `docs/RELEASING.md`).
+- Web Browser (WASM/PWA): Planned for v2.0; Android planned for v3.0.
