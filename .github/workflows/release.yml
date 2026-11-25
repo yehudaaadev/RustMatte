@@ -94,11 +94,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            APP_BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -path "*/Contents/MacOS/*" -type f | head -n 1)
             echo "=== macOS otool -L ==="
-            otool -L "${APP_BIN}"
-            echo "=== macOS .app contents ==="
-            find "target/${{ matrix.target }}/release/bundle/macos" -maxdepth 4
+            otool -L "target/${{ matrix.target }}/release/rustmatte-app"
+            echo "=== macOS release & bundle files ==="
+            ls -la "target/${{ matrix.target }}/release" | head -n 30
+            find "target/${{ matrix.target }}/release/bundle" -maxdepth 4
           elif [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             echo "=== Linux ldd ==="
             ldd "target/${{ matrix.target }}/release/rustmatte-app"
@@ -112,9 +112,7 @@ jobs:
       - name: Verify desktop binary uses custom-protocol instead of devUrl
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -path "*/Contents/MacOS/*" -type f | head -n 1)
-          elif [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
+          if [ "${{ matrix.os }}" = "macos-latest" ] || [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             BIN="target/${{ matrix.target }}/release/rustmatte-app"
           else
             BIN="target/${{ matrix.target }}/release/rustmatte-app.exe"
