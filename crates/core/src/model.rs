@@ -85,8 +85,8 @@ pub static SPEC_QUALITY: ModelSpec = ModelSpec {
     source_description:
         "BiRefNet_lite 512 FP32 ONNX export from HuggingFace (studioludens/birefnet-lite-512)",
     source_urls: &[
-        "https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/birefnet_lite_512.onnx",
         "https://huggingface.co/studioludens/birefnet-lite-512/resolve/main/onnx/model.onnx",
+        "https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/birefnet_lite_512.onnx",
     ],
     width: 512,
     height: 512,
@@ -112,8 +112,8 @@ pub static SPEC_FAST: ModelSpec = ModelSpec {
     license: "Apache-2.0",
     source_description: "U-2-Netp 320 FP32 ONNX export from HuggingFace (edgetools/u2netp)",
     source_urls: &[
-        "https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/u2netp.onnx",
         "https://huggingface.co/edgetools/u2netp/resolve/main/u2netp.onnx",
+        "https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/u2netp.onnx",
     ],
     width: 320,
     height: 320,

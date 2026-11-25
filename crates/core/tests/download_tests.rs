@@ -26,9 +26,8 @@ fn test_manifest_specifications() {
         assert!(!spec.license.is_empty());
         assert!(!spec.source_urls.is_empty());
 
-        // First URL is the primary GitHub Release asset
-        assert!(spec.source_urls[0].starts_with("https://github.com/"));
-        // Second URL is the official upstream HTTPS fallback source
+        // First URL is the verified upstream HuggingFace export; second is the project mirror URL
+        assert!(spec.source_urls[0].starts_with("https://huggingface.co/"));
         assert!(spec.source_urls[1].starts_with("https://"));
     }
 
