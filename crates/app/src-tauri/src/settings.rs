@@ -91,7 +91,13 @@ pub fn load_settings_from_path(path: &Path) -> AppSettings {
         return AppSettings::default();
     };
     match serde_json::from_str::<AppSettings>(&contents) {
-        Ok(parsed) => parsed.sanitized(),
+        Ok(parsed) => {
+            let mut clean = parsed.sanitized();
+            if clean.device == "auto" {
+                clean.device = "cpu".to_string();
+            }
+            clean
+        }
         Err(err) => {
             eprintln!(
                 "Warning: Settings file '{}' is corrupt ({err}); using defaults.",
@@ -219,6 +225,19 @@ mod tests {
         assert_eq!(legacy.device, "cpu");
         assert_eq!(legacy.refine_level, "none");
         assert_eq!(legacy.background_hex, "#ffffff");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrates_saved_auto_device_to_cpu_on_load() {
+        let (path, dir) = temp_settings_path("migrate_auto");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, br#"{"device":"auto","tier":"fast"}"#).unwrap();
+
+        let loaded = load_settings_from_path(&path);
+        assert_eq!(loaded.device, "cpu");
+        assert_eq!(loaded.tier, "fast");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

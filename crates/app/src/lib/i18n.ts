@@ -37,6 +37,7 @@ export interface Translations {
   refineStandard: string;
 
   deviceLabel: string;
+  deviceReadOnlyLine: string;
   deviceAuto: string;
   deviceCpu: string;
   deviceDirectml: string;
@@ -205,6 +206,7 @@ export const dictionaries: Record<Lang, Translations> = {
     refineStandard: "Standard (guided filter + defringing)",
 
     deviceLabel: "Hardware Acceleration",
+    deviceReadOnlyLine: "Processing: CPU",
     deviceAuto: "Auto (GPU with CPU fallback)",
     deviceCpu: "CPU only",
     deviceDirectml: "DirectML GPU (Windows)",
@@ -384,6 +386,7 @@ export const dictionaries: Record<Lang, Translations> = {
     refineStandard: "Standar (guided filter + bersih warna tepi)",
 
     deviceLabel: "Perangkat Proses",
+    deviceReadOnlyLine: "Perangkat proses: CPU",
     deviceAuto: "Otomatis (GPU, cadangan CPU)",
     deviceCpu: "CPU saja",
     deviceDirectml: "GPU DirectML (Windows)",

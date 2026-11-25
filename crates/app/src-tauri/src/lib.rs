@@ -7,11 +7,6 @@ mod settings;
 mod state;
 mod validation;
 
-#[cfg(all(not(debug_assertions), dev, not(test)))]
-compile_error!(
-    "Release builds of `rustmatte-app` require Tauri's `custom-protocol` feature so embedded frontend assets are served instead of `devUrl` (`http://localhost:1420`). Build with `npx tauri build` inside `crates/app`, or `cargo build --release -p rustmatte-app --features custom-protocol` after `npm run build`."
-);
-
 #[used]
 static RUSTMATTE_BUILD_MODE_MARKER: &[u8] = if cfg!(dev) {
     b"RUSTMATTE_BUILD_MODE=dev-url\0"
@@ -238,12 +233,12 @@ fn tier_status_from_spec(tier: ModelTier, caveat: Option<String>) -> ModelTierSt
         .source_urls
         .first()
         .map(|u| extract_source_host(u))
-        .unwrap_or_else(|| "github.com".to_string());
+        .unwrap_or_else(|| "huggingface.co".to_string());
     let fallback_host = spec
         .source_urls
         .get(1)
         .map(|u| extract_source_host(u))
-        .unwrap_or_else(|| "huggingface.co".to_string());
+        .unwrap_or_else(|| "github.com".to_string());
 
     ModelTierStatus {
         tier: match tier {

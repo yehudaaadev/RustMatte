@@ -180,7 +180,8 @@
             ? saved.theme
             : "system";
         selectedTier = saved.tier === "fast" ? "fast" : "quality";
-        selectedDevice = saved.device || "cpu";
+        selectedDevice =
+          saved.device === "auto" || !saved.device ? "cpu" : saved.device;
         refineLevel =
           saved.refine_level === "none" || saved.refine_level === "light"
             ? saved.refine_level
@@ -1125,13 +1126,7 @@
         </div>
 
         <div class="field">
-          <label for="device-select">{t.deviceLabel}</label>
-          <select id="device-select" bind:value={selectedDevice} disabled={isBusy}>
-            <option value="cpu">{t.deviceCpu}</option>
-            <option value="auto">{t.deviceAuto}</option>
-            <option value="directml">{t.deviceDirectml}</option>
-            <option value="coreml">{t.deviceCoreml}</option>
-          </select>
+          <div class="folder-box" role="note">{t.deviceReadOnlyLine}</div>
         </div>
 
         <div class="field">
