@@ -1,62 +1,40 @@
 # Project State: RustMatte
 
 ## Current Phase
-Phase 3 (Desktop UI with Tauri 2 & Svelte 5) - Completed and verified. Awaiting owner confirmation for Phase 4 (Packaging and Multi-OS Distribution).
+Pre-Release Fixes Complete — all uncommitted Phase 3A, 3B, 3C, 4, and pre-release fix work committed logically on local `main` (not pushed, not tagged). Awaiting owner review and confirmation.
 
 ## Last Session Summary
-Executed Phase 3 end-to-end:
-- **Tauri 2 Desktop Application Scaffolding (`crates/app`)**:
-  - Pinned `tauri = "=2.12.7"` and `tauri-build = "=2.7.6"`.
-  - Added `crates/app/src-tauri` as a first-class member of the Cargo workspace.
-  - Configured window properties: 1080x720 initial dimension, 800x600 minimum, drag-and-drop support, CSP, and permissions.
-  - Implemented typed Tauri 2 IPC commands in `crates/app/src-tauri/src/lib.rs`:
-    - `get_model_cache_status`: returns availability of Quality and Fast tiers in OS cache.
-    - `download_model_tier`: on-demand model weight downloading directly from UI.
-    - `process_single_image`: processes raw image bytes using `rustmatte_core` pipeline (decoding, preprocessing, ORT inference, refinement) and returns Base64 PNG cutout and per-stage timings.
-    - `save_cutout_png`: exports transparent cutout to local filesystem.
-- **Frontend Architecture (`crates/app/src/routes/+page.svelte`)**:
-  - Modern Svelte 5 with runes (`$state`, `$derived`).
-  - Drag-and-drop zone supporting single files and batch queues.
-  - Interactive Before/After split comparison slider with draggable dividing line and checkerboard transparency.
-  - Background color preview picker (Transparent checkerboard, Solid White, Solid Black, Custom HEX color).
-  - Configurable inference settings:
-    - Tier: Quality (`BiRefNet`) vs Fast (`U-2-Netp`).
-    - Device: CPU vs DirectML GPU.
-    - Early Downscaling: `--max-side` slider (512px - 4096px, or original).
-    - Edge Refinement: Guided Filter and defringing toggle.
-  - Full bilingual support (English / Bahasa Indonesia) with instant reactive switching.
-  - Dark / Light theme toggle with persistence.
-  - Timing metrics panel displaying total processing duration and individual stage latencies.
-- **Compilation & Quality Gate**:
-  - SvelteKit static export compiled with 0 errors.
-  - Release binary built: `target/release/rustmatte-app.exe` (34,575,360 bytes / 34.5 MB).
-  - All 28 workspace unit and integration tests passed.
-  - `cargo fmt --all -- --check` passed cleanly.
-  - `cargo deny check licenses` and `cargo deny check advisories` verified with 0 issues.
+Executed Pre-Release Fixes:
+- **24 MP Memory & Speed Regression Fix (`crates/core/src/refine.rs`, `D-027`, `P-032`)**:
+  - Identified root cause: `guided_filter` allocated 13 concurrent full-frame `Vec<f32>` buffers (`96 MB` each at 24 MP = `1,248 MB`) plus `orig.to_rgb8()` (`72 MB`) and `orig.to_rgba8()` (`96 MB`).
+  - Replaced full-frame allocations with 128-row banded `guided_filter` (`4 * radius` halos, reused `BandBuffers`) and direct `DynamicImage` slice reads.
+  - Measured results (release CLI, fresh process per run, `large_24mp.jpg`):
+    - Quality `--refine standard`: `3,352.68 MB` -> **`2,185.15 MB`** (`<= 2.5 GB` target), postprocess `3,590.40 ms` -> `1,748.98 ms`.
+    - Fast `--refine standard`: `1,660.08 MB` -> **`492.68 MB`** (`<= 1.0 GB` target), postprocess `3,603.99 ms` -> `1,579.88 ms`.
+  - Added `--refine <none|light|standard>` CLI flag (default `standard` per `D-021`).
+- **Identifier, Accessibility, Docs & Audits**:
+  - Updated Tauri identifier `com.rustmatte.app` -> `io.github.yehudaaadev.rustmatte` across `tauri.conf.json`, `README.md`, `docs/ARCHITECTURE.md` (zero old refs remaining; `dirs::data_local_dir()` model cache unaffected).
+  - Fixed `.slider-viewport` accessibility warning (`svelte-check`: `0` errors, `0` warnings) using `use:bindViewportEvents` + `role="region"` and keyboard zoom/pan.
+  - Audited `README.md` comparison table against upstream sources (`rembg` MIT, `@imgly/background-removal` AGPL-3.0, `remove.bg` proprietary credit SaaS; checked `2026-11-25`).
+  - Checked `models-v1` GitHub Release URLs: both returned `HTTP/1.1 404 Not Found`.
 
 ## Done
-- Phase 0: Workspace setup, toolchain pinning, GPL-3.0 licensing, CI workflow, skeleton crates.
-- Phase 1A: Inference smoke test with BiRefNet_lite on CPU via `ort` on 6 diverse real fixtures.
-- Phase 1B: Model benchmark matrix (5 models across 12 fixtures, robustness tests, ORT sweeps).
-- Phase 1B-FIX: Isolated per-model memory benchmarking, contact sheet regeneration, license audit, and documentation correction.
-- Phase 1C-1: Core engine pipeline, decode safety, model checksum verification, and single-image CLI.
-- Phase 1C-2: Automatic model downloader, OS local caching, consent prompt, CLI models subcommand, and per-stage timing visibility.
-- Phase 1D-1: Housekeeping, transitive license audit, batch folder mode, early downscaling, flat memory verification, and release packaging workflow.
-- Phase 1D-2: Advanced post-processing (Fast Guided Filter, selective transition feathering, color defringing, and `--no-refine` flag).
-- Phase 2: Batch processing, formats, and performance (DirectML/CoreML execution providers, multi-stage CPU fallback, `--device` CLI flag).
-- Phase 3: Desktop UI with Tauri 2 (Svelte 5 frontend, before/after slider, background preview, bilingual EN/ID, dark mode, `rustmatte-app.exe`).
+- Phase 0 through Phase 4 + Pre-Release Fixes committed cleanly on local `main`.
 
 ## In Progress
-- Completed Phase 3. Awaiting owner direction for Phase 4 (Packaging and Multi-OS Distribution).
+- Awaiting owner action on `tests/fixtures/PROVENANCE.md` / `tests/fixtures/SHA256SUMS`, `models-v1` asset upload, pushing to `origin/main`, and `v0.1.0-rc2` draft release review.
 
 ## Known Broken or Failing
-- None. All unit tests, integration tests, cargo clippy, and cargo deny checks pass cleanly with 0 errors.
+- `https://github.com/yehudaaadev/RustMatte/releases/download/models-v1/*.onnx` returns `404` (HuggingFace fallback works).
+- `tests/fixtures/SHA256SUMS` contains leftover `opencode-hop-*` hashes from commit `8a53caf`.
+- Multi-OS `release.yml` cloud build (`v0.1.0-rc2`), macOS/Linux runtime tests, and clean second-PC installer verification remain unverified until pushed/tested.
 
 ## Next Step
-- Phase 4: Release Packaging and Multi-OS Distribution (MSI installer generation, GitHub Actions release matrix for Windows, macOS, Linux).
+- Owner reviews commits and `tests/fixtures/PROVENANCE.md`, then confirms pushing `main` and tagging `v0.1.0-rc2`.
 
 ## Open Questions for the Owner
-- Does the owner want to test `rustmatte-app.exe` now, or proceed to Phase 4?
+- What would you like to do with `tests/fixtures/SHA256SUMS` and the `TODO(owner)` / person fixtures in `tests/fixtures/PROVENANCE.md` before pushing?
+- Ready to push local commits to `origin/main`?
 
 ## Last Updated
-2026-11-24
+2026-11-25

@@ -63,27 +63,47 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
 - [x] Implement fast mode option (early downscaling of very large images to conserve decode time and RAM).
   - Acceptance criterion: Large image processes with reduced decode overhead; document that model inference time is unchanged. Verified with `--max-side 1024` on 24MP image (peak RAM reduced by 209MB, postprocessing overhead reduced by 98.5%). Verified.
 
-## Phase 3: Desktop UI with Tauri 2 (v0.3)
-- [x] Scaffold Tauri 2 application in `crates/app` with frontend (Svelte + TypeScript).
-  - Acceptance criterion: Application window launches with drag-and-drop zone and queue. Verified with Tauri 2 and Svelte 5.
-- [x] Implement before/after comparison slider with zoom and pan.
-  - Acceptance criterion: Slider interactively reveals original vs transparent output. Verified with interactive mouse/touch drag handle and checkerboard transparency.
-- [x] Implement output settings (background color picker, format, fast mode toggle, export directory).
-  - Acceptance criterion: Saving exports file according to selected settings. Verified with tier selector, execution provider selector, early downscaling, refinement toggle, and background color picker (checkerboard, white, black, custom).
-- [x] Implement bilingual support (English and Indonesian) and light/dark theme.
-  - Acceptance criterion: Toggling language and theme updates all UI text instantly. Verified with zero-dependency reactive i18n store and theme toggle.
-- [x] Configure Windows standalone binary (`rustmatte-app.exe`).
-  - Acceptance criterion: Production release binary builds and runs cleanly on Windows (34.5 MB at `target/release/rustmatte-app.exe`). Verified.
+## Phase 3A: Desktop App Foundation (Tauri 2 + Svelte 5)
+- [x] Pin exact Rust (`tauri = "=2.12.7"`, `tauri-plugin-dialog = "=2.8.4"`) and npm (`svelte = "5.59.1"`, `vite = "8.3.8"`, `typescript = "6.0.3"`) versions, run Rust + npm license checks, and document in `THIRD_PARTY_LICENSES.md` and CI.
+  - Acceptance criterion: `cargo deny check licenses advisories`, `npm run license-check`, and `npm run license-check:all` pass cleanly. Verified.
+- [x] Implement thin Rust backend commands (`get_models_status`, `download_model` with consent, `process_images` on blocking thread with events, `cancel_job`, `open_output_folder`, `get_settings`, `set_settings`, `save_cutout_png`) and per-tier cached `Remover` session.
+  - Acceptance criterion: No image-processing logic duplicated outside `rustmatte-core`; session reused across jobs; unit tests for path validation, settings round-trip/corruption, preview cache cap/cleanup, and job/cancel state pass (10/10 tests). Verified.
+- [x] Enforce zero full-resolution image data over IPC via bounded (`<= 1600 px`) preview cache in `$APPCACHE/previews/` served through scoped `assetProtocol` + strict CSP in `tauri.conf.json` and `docs/SECURITY_MODEL.md`.
+  - Acceptance criterion: Strict CSP configured, `shell`/`fs` plugins omitted, release devtools disabled, preview cache capped and wiped on exit. Verified in code/config; interactive GUI checks pending manual checklist.
+- [x] Adapt Svelte 5 frontend for native dialog open/save, Tauri `onDragDropEvent`, consent-gated model download, live queue progress/cancel, asset-protocol preview slider, persistent settings, and bilingual EN/ID + dark/light toggles.
+  - Acceptance criterion: `npm run check` (`svelte-check`), `npm run build`, and `cargo build --release -j 2 -p rustmatte-app` succeed; release `rustmatte-app.exe` (35.54 MB) launches cleanly on Windows (`25.73 MB` host + `117.23 MB` WebView2 idle RSS). Verified.
+
+## Phase 3B: Desktop UI/UX and Features
+- [x] Main single-screen layout (large drop zone for photos/folders, windowed left thumbnail queue, center zoom+pan comparison slider on checkerboard, right options panel with honest tier descriptions, Remove background, Save/Save all, progress bar + Cancel).
+  - Acceptance criterion: Frontend compiles (`svelte-check`, `vite build`), queue state machine unit tests pass (`node --test`), and 100-image batch memory stays flat (`313.64 MB` mid -> `311.7 MB` end, peak `417.38 MB` on Fast tier release CLI). Interactive GUI visual review pending manual checklist.
+- [x] First-run model dialog (`Download`, `Choose a file I already have` with SHA-256 verification, `Cancel`, `Retry`, `"Never use the network"` offline lock), About & Licenses modal (from shipped `MODELS.md` and `THIRD_PARTY_LICENSES.md` + `Copy diagnostic info` without paths), and friendly errors with technical details expander.
+  - Acceptance criterion: Rust commands (`import_model_file`, `get_about_info`, `get_diagnostic_info`, offline lock check in `download_model`) and `errors.ts` unit tests pass. Verified.
+- [x] Typed EN/ID dictionaries (natural Indonesian, key-parity unit tested), system/light/dark themes with reduced-motion and system fonts, full keyboard shortcuts (`Ctrl+O`, `Ctrl+Enter`, `Ctrl+S`, `Ctrl+Shift+S`, `ArrowUp/Down`, `Esc`), and screen-reader slider ARIA attributes.
+  - Acceptance criterion: `npm test` (3/3), `svelte-check` (0 errors), `cargo test --workspace -j 2` (41 passed, 0 failed, 2 ignored), and release builds pass. Verified.
+- [ ] Manual GUI review checklist and screenshots (`docs/screenshots/`) on real desktop session.
+  - Acceptance criterion: Owner signs off on manual checklist covering every state, both themes, both languages, keyboard-only run, 20-photo batch, mid-run cancel, and corrupt file.
+
+## Phase 3C: Desktop Installers and Distribution
+- [x] Configure Windows NSIS installer (`embedBootstrapper` WebView2), single-source version parity (`Cargo.toml` + `package.json` + omitted `tauri.conf.json` version), and verify standalone clean-directory install/launch/uninstall on Windows.
+  - Acceptance criterion: `RustMatte_0.1.0_x64-setup.exe` (`9.69 MiB`) silently installs (`34.43 MiB` on disk), launches standalone in `204 ms` (`41.93 MB` host + `94.77 MB` WebView2 RSS) without `onnxruntime.dll`, and uninstalls cleanly. Verified locally on Windows.
+- [x] Update `.github/workflows/release.yml` and `.github/workflows/ci.yml` with Node-24-compatible pinned actions, version parity check, multi-OS CLI + desktop bundles (Windows NSIS, macOS `aarch64` `.dmg`, Linux `ubuntu-22.04` `.AppImage`/`.deb` with `otool -L` / `ldd` logs), consolidated `SHA256SUMS.txt`, and draft prerelease output (`GITHUB_TOKEN` only).
+  - Acceptance criterion: Workflow YAML parsed cleanly; tagged cloud build UNVERIFIED until `v0.1.0-rc2` is pushed.
+- [x] Complete static no-network code/capability audit and update `README.md` (per-OS install, SmartScreen/Gatekeeper/Linux runtime deps, Verify your download, OS data/model removal), `docs/RELEASING.md`, and `CHANGELOG.md`.
+  - Acceptance criterion: Static grep confirms `ureq` exists only in `crates/core/src/download.rs` and `capabilities/default.json` grants only `core:default`, `dialog:allow-open`, `dialog:allow-save`. Verified.
+- [ ] Verify `v0.1.0-rc2` tagged release run in GitHub Actions (inspect macOS `otool -L` and Linux `ldd` logs) and test Windows installer on a clean second machine without developer tools.
+  - Acceptance criterion: Draft release artifacts and `SHA256SUMS.txt` verified on all three OSes and clean-machine offline run confirmed by owner.
 
 ## Phase 4: Release Packaging and Multi-OS Distribution (v1.0)
-- [ ] Configure GitHub Actions release matrix for Windows (.msi, .exe), macOS (.dmg), and Linux (.AppImage, .deb).
-  - Acceptance criterion: CI builds release artifacts across all three platforms on git tag; macOS and Linux labeled experimental.
-- [ ] Complete documentation: README, CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue templates.
-  - Acceptance criterion: All documentation files present and reviewed.
-- [ ] Perform full license audit in `THIRD_PARTY_LICENSES.md`.
-  - Acceptance criterion: Every dependency and model weight file documented and verified.
-- [ ] Test release installers on clean Windows machines without developer tools.
-  - Acceptance criterion: Windows installer runs correctly offline.
+- [x] Configure GitHub Actions release matrix for Windows (.exe NSIS), macOS (.dmg aarch64), and Linux (.AppImage, .deb).
+  - Acceptance criterion: Workflow YAML valid and builds CLI + desktop bundles with `otool -L`/`ldd` logging and consolidated `SHA256SUMS.txt`. Cloud tag run UNVERIFIED until `v0.1.0-rc2` pushed.
+- [x] Complete community, provenance, and release documentation (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue/PR templates, `.github/dependabot.yml`, `docs/ROADMAP.md`, `docs/RELEASING.md`, `CHANGELOG.md`, `tests/fixtures/PROVENANCE.md`).
+  - Acceptance criterion: All files present, claims audited against `docs/BENCHMARKS.md`, and fresh-clone build verified. Verified.
+- [x] Perform full license audit in `THIRD_PARTY_LICENSES.md` and verify `cargo-deny` + npm license checks in CI.
+  - Acceptance criterion: Every Rust crate, npm package, and model weight file documented; `cargo deny` and `npm run license-check` pass. Verified.
+- [ ] Owner manual verification: review `tests/fixtures/PROVENANCE.md`, apply GitHub repository settings/labels, capture `docs/screenshots/`, test Windows installer on clean second machine without dev tools, and review/publish draft prerelease (`v0.1.0-rc2`).
+  - Acceptance criterion: Windows installer runs offline on clean machine and owner publishes release.
+- [x] Pre-release fixes: fix 24 MP guided-filter memory regression (`2,185 MB` Quality / `493 MB` Fast), rename identifier to `io.github.yehudaaadev.rustmatte`, fix `svelte-check` a11y warning (`0` warnings), audit comparison table, add `--refine <none|light|standard>` CLI flag, and create logical commits.
+  - Acceptance criterion: `cargo fmt`, `clippy -D warnings`, `cargo test --workspace -j 2`, `cargo deny`, `npm test/check/build/license-check`, and release build pass; clean `git status`. Verified.
 
 ---
 
@@ -94,6 +114,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
 - [ ] Apple HEIC/HEIF decoding support with cross-platform build validation.
 
 ### v1.x Scope
+- [ ] Crop-to-subject export option in desktop UI.
+- [ ] WebP and additional image export formats alongside PNG.
 - [ ] Standalone photo compression utility.
 - [ ] Manual refine brush (restore/erase on mask).
 - [ ] Preset dimensions for marketplace and passport photos.

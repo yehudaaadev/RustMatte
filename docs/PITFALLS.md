@@ -166,3 +166,39 @@ Format:
 - Symptom: Child process hangs indefinitely after processing ~90 images during long-running batch CLI runs with redirected stdout/stderr.
 - Cause: Operating system standard error/output pipes have a fixed 4KB buffer. If the child process writes verbose output that exceeds 4KB while the parent process synchronously polls `HasExited` without reading the stream asynchronously, the child blocks on `write()` / `eprintln!`.
 - Fix or avoidance: Always redirect child process stdout/stderr to disk files (`cmd.exe /c ... > stdout.log 2> stderr.log`) or use asynchronous event handlers (`BeginOutputReadLine`, `BeginErrorReadLine`) when monitoring processes that generate large output streams.
+
+### P-027: Base64 IPC Bloat & Webview Memory Duplication
+- Date: 2026-11-25
+- Symptom: Sending full-resolution original and cutout images as Base64 data URLs over Tauri IPC inflates JSON payloads by ~33% and duplicates multi-megabyte buffers across Rust and WebView2 JS heap.
+- Cause: Tauri IPC serializes command payloads as JSON/strings; high-resolution PNGs (e.g., 24MP) create large allocations on both sides of the bridge.
+- Fix or avoidance: Write bounded `<= 1600 px` preview PNGs into `$APPCACHE/previews/` and pass file paths to the frontend using `convertFileSrc` with `assetProtocol` scoped strictly to that directory, while writing full-resolution cutouts directly on disk.
+
+### P-028: Tauri 2 Linux CI System Libraries & `svelte-check` TypeScript Peer Range
+- Date: 2026-11-25
+- Symptom: (1) `ubuntu-latest` CI fails compiling `gio-sys v0.18.1` (`Package 'gio-2.0' not found`) once `crates/app/src-tauri` joins the Cargo workspace; (2) upgrading `typescript` to `7.0.2` violates `svelte-check@4.7.8` peer dependency (`^5.0.0 || ^6.0.0`).
+- Cause: Tauri 2 requires Linux GTK3/WebKitGTK dev headers via `apt-get`, and `svelte-check` 4.x targets TypeScript 5/6.
+- Fix or avoidance: Install Tauri 2 Ubuntu system packages in `.github/workflows/ci.yml` when `matrix.os == 'ubuntu-latest'`, and pin `typescript` to `"6.0.3"` in `crates/app/package.json`.
+
+### P-029: Mixing `node --test` TypeScript Files with SvelteKit `svelte-check`
+- Date: 2026-11-25
+- Symptom: Running `svelte-check` fails with `Cannot find name 'node:test'` and `An import path can only end with a '.ts' extension` when zero-dependency unit tests in `crates/app/tests/` use `node --test` with `.ts` imports.
+- Cause: SvelteKit's generated `.svelte-kit/tsconfig.json` type-checks `tests/` without `@types/node` or `allowImportingTsExtensions`.
+- Fix or avoidance: Enable `"allowImportingTsExtensions": true` and `"noEmit": true` in `crates/app/tsconfig.json` and provide a minimal `crates/app/tests/node.d.ts` declaration rather than adding external npm dev dependencies.
+
+### P-030: PowerShell `--` Argument Parsing with `npm run tauri build`
+- Date: 2026-11-25
+- Symptom: Running `npm run tauri build -- --bundles nsis` in Windows PowerShell fails with `npm error Unknown cli flag: --bundles`.
+- Cause: PowerShell strips or alters bare `--` tokens passed to `npm`, causing npm to interpret `--bundles` as an npm CLI flag instead of forwarding it to `tauri`.
+- Fix or avoidance: Invoke `npx tauri build --bundles <target>` directly in both local PowerShell commands and `.github/workflows/release.yml`.
+
+### P-031: Static vs Dynamic ONNX Runtime Linkage Verification
+- Date: 2026-11-25
+- Symptom: Checking `target\release\` on Windows shows no `onnxruntime.dll` (and an empty 0-byte `DirectML.dll` placeholder), raising concern that an installed app might fail on a clean system.
+- Cause: `ort = "=2.0.0-rc.15"` (`download-binaries`) links ONNX Runtime statically into `rustmatte-app.exe` on Windows `x86_64-pc-windows-msvc` (verified via PE import table inspection and silent NSIS installation into an isolated directory). On macOS/Linux, dynamic linkage may still occur depending on upstream `ort` prebuilts.
+- Fix or avoidance: Inspect `otool -L` (macOS) and `ldd` (Linux) inside `.github/workflows/release.yml` on the first tagged build before publishing the draft release.
+
+### P-032: Full-Frame `Vec<f32>` Allocations in Guided Filter Cause +1.17 GB RAM Spike at 24 MP
+- Date: 2026-11-25
+- Symptom: Processing `large_24mp.jpg` (`6000x4000`) with edge refinement jumped from `2,277 MB` (`--refine none`) to `3,353 MB` on Quality tier and from `584 MB` to `1,660 MB` on Fast tier.
+- Cause: `guided_filter` allocated 13 concurrent full-resolution `Vec<f32>` buffers (`96 MB` each = `1,248 MB`) alongside `orig.to_rgb8()` (`72 MB`) and `orig.to_rgba8()` (`96 MB`) copies.
+- Fix or avoidance: Process `guided_filter` in 128-row horizontal bands with `4 * radius` halos, reuse band scratch buffers, and read pixels directly from `DynamicImage` without full-frame RGB/RGBA copies (`D-027`). Note that resetting the vertical sliding-window `f32` sum per band eliminates cross-image float drift (`~1.2e-5`), which can flip a few edge pixels by 1 LSB (changing PNG SHA-256 hashes while preserving visual equivalence).

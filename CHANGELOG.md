@@ -7,50 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Tauri 2 Desktop Application (`crates/app`):
-  - Native standalone executable `rustmatte-app.exe` (34.5 MB).
-  - Modern Svelte 5 frontend with runes (`$state`, `$derived`).
-  - Interactive Before/After split comparison slider with touch and mouse drag handles.
-  - Background color preview picker (Transparent checkerboard, Solid White, Solid Black, Custom HEX color).
-  - Drag-and-drop file queue supporting single and batch image additions.
-  - Real-time output settings (Quality vs Fast tier, CPU vs DirectML GPU device, early downscaling slider, edge refinement toggle).
-  - Model status detection and on-demand background model downloader in UI.
-  - Bilingual localization (English and Bahasa Indonesia) with instant reactive switching.
-  - Dark and Light theme toggle with localStorage persistence.
-  - Per-stage latency breakdown display (Decode, Preprocess, Inference, Refinement).
-- Hardware execution providers for ONNX Runtime:
-  - Added `--device <cpu|directml|coreml|auto>` CLI argument (default: `cpu`).
-  - Added `directml` cargo feature enabling DirectX 12 hardware acceleration on Windows.
-  - Added `coreml` cargo feature for Apple Silicon / Neural Engine on macOS.
-  - Multi-stage graceful fallback to CPU during session creation and runtime inference (e.g., when GPU memory is exhausted on large models).
-  - Explicit hardware session deallocation before CPU fallback to prevent dual-session memory exhaustion.
-  - Active execution provider reporting in verbose output and batch summary reports.
-- Advanced edge refinement pipeline (`crates/core::refine`):
-  - Fast Guided Filter with separable 2D box filtering ($O(N)$ runtime) using original grayscale luminance guidance.
-  - Selective transition zone feathering: locks interior foreground ($\ge 0.95$) to full opacity and background ($\le 0.05$) to full transparency, preventing blurry boundaries while refining uncertain edges.
-  - Boundary color defringing: $5 \times 5$ neighborhood decontamination extrapolating solid foreground RGB into semi-transparent edge pixels ($\alpha < 235$) to eliminate colored halos.
-- `--no-refine` CLI flag to disable postprocessing edge refinement and export raw segmentation masks.
-- Batch processing mode in `rustmatte` CLI: support directory inputs with automatic detection of supported image formats (`.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`).
-- `--out <DIR>` output directory option (defaults to `rustmatte-output` adjacent to input directory).
-- `--recursive` / `-r` flag for recursive directory scanning with symlink traversal guards.
-- Deterministic collision handling: automatically formats conflicting output filenames as `<stem>_<ext>.png`.
-- `--skip-existing` flag to resume interrupted batches without reprocessing existing outputs.
-- `--max-side <N>` early downscaling to bound processing time and peak RAM on high-resolution images.
-- Batch progress reporting to `stderr`: `[index/total] filename: status (elapsed)`.
-- Batch summary report: processed count, skipped count, failure count, warnings, total execution time, and average per-image duration.
-- Tri-state exit codes: `0` (all ok), `1` (total failure or invalid arguments), `2` (partial failure).
-- Automated model downloader (`crates/core::download`) with one-time user consent prompt, progress indicator, SHA-256 verification, and atomic rename.
-- Hierarchical model lookup chain: `--model-path` > `RUSTMATTE_MODEL_DIR` > OS cache directory > `./models/`.
-- `models list` and `models download` CLI subcommands for offline model weight management.
-- License and security auditing via `cargo-deny` (`deny.toml`) integrated into CI.
-- Multi-platform GitHub Actions release workflow (`.github/workflows/release.yml`) for Windows, macOS, and Linux.
-
-### Changed
-- Standardized image decoding limits: `MAX_IMAGE_DIMENSION = 16384` and `MAX_ALLOCATION_BYTES = 512 MB`.
-- EXIF orientation handling with automatic image rotation.
-- Pinned ONNX Runtime session configuration adhering to Decision D-015.
-
 ### Fixed
-- Fixed MSVC `link.exe` out-of-memory errors by restricting concurrent build jobs (`-j 2`).
-- Fixed Linux/macOS build failures by gating Windows-specific `psapi` linkage in test examples behind `#[cfg(windows)]`.
+- Eliminated ~1.17 GB peak working set spike at 24 MP during edge refinement by processing the Guided Filter in 128-row horizontal bands and reading image pixels directly without full-frame `to_rgb8()`/`to_rgba8()` copies (Quality 24 MP: `3,352.68 MB` -> `2,185.15 MB`; Fast 24 MP: `1,660.08 MB` -> `492.68 MB`; postprocessing ~2x faster).
+- Added explicit `--refine <none|light|standard>` CLI option (default `standard` per `D-021`, keeping `--no-refine` alias).
+- Changed desktop bundle identifier from `com.rustmatte.app` to `io.github.yehudaaadev.rustmatte` (resolves macOS `.app` suffix collision warning).
+- Resolved `svelte-check` accessibility warning on comparison slider viewport (`0` errors, `0` warnings) with `use:bindViewportEvents` + `role="region"` and keyboard zoom/pan support.
+
+## [0.1.0] - 2026-11-25 (Pre-Release)
+
+### Added
+- **Core Background Removal Engine (`crates/core`)**:
+  - Offline ONNX Runtime (`ort = "=2.0.0-rc.15"`) CPU inference pipeline with optional `directml` (Windows) and `coreml` (macOS) execution providers and two-stage graceful CPU fallback.
+  - Two-tier model architecture (`D-018`): Quality tier (`BiRefNet_lite_512`, 183 MB, MIT) and Fast tier (`U-2-Netp`, 4.36 MB, Apache-2.0).
+  - Post-processing edge refinement (`crates/core::refine`): $O(N)$ separable Fast Guided Filter ($r = 4, \epsilon = 10^{-4}$), selective transition zone feathering, and $5 \times 5$ boundary color defringing.
+  - Safe image decoding (`MAX_IMAGE_DIMENSION = 16384`, `MAX_ALLOCATION_BYTES = 512 MB`), EXIF orientation normalization, and truncated-input warning detection (`Warning::DamagedInput`).
+  - Consented one-time model downloader (`crates/core::download`) using pure-Rustls `ureq`, `.part` atomic rename, strict SHA-256 verification, and hierarchical model lookup (`--model-path` > `RUSTMATTE_MODEL_DIR` > OS cache > `./models/`).
+- **Command-Line Interface (`crates/cli`)**:
+  - Single-image and folder batch processing (`--out`, `--recursive`, `--skip-existing`, `--overwrite`, `--max-side`, `--no-refine`, `--device`, `--yes`, `--no-download`, `--verbose`) with deterministic collision naming (`<stem>_<ext>.png`) and tri-state exit codes (`0`, `1`, `2`).
+  - `rustmatte models list` and `rustmatte models download` subcommands.
+- **Desktop Application (`crates/app`, Tauri 2 + Svelte 5)**:
+  - Single-screen UI with photo/folder drop zone, windowed thumbnail queue, zoom/pan Before/After comparison slider on checkerboard or solid preview, transparent or solid-color PNG export (`Save` and `Save all`), progress bar, and `Cancel`.
+  - Scoped `assetProtocol` preview cache (`<= 1600 px` in `$APPCACHE/previews/`, cleaned on exit) — zero full-resolution image data over IPC.
+  - First-run model dialog with explicit size/host/license disclosure, SHA-256 verified local `.onnx` import (`import_model_file`), `Retry`, and `"Never use the network"` offline lock.
+  - About & Licenses modal reading shipped `MODELS.md` and `THIRD_PARTY_LICENSES.md`, plus `"Copy diagnostic info"` (no file paths).
+  - Bilingual English and Indonesian dictionaries, `system`/`light`/`dark` themes, reduced-motion support, and keyboard shortcuts (`Ctrl+O`, `Ctrl+Enter`, `Ctrl+S`, `Ctrl+Shift+S`, `ArrowUp/Down`, `Esc`).
+  - Strict CSP, minimal `dialog:allow-open`/`dialog:allow-save` capabilities, and atomic JSON settings persistence (`docs/SECURITY_MODEL.md`).
+- **Packaging, CI, and Community Infrastructure**:
+  - Windows NSIS installer (`RustMatte_0.1.0_x64-setup.exe`, `9.69 MiB`) with WebView2 `embedBootstrapper`.
+  - Multi-OS release workflow (`.github/workflows/release.yml`) for Windows NSIS, macOS `aarch64` `.dmg`, Linux `.AppImage`/`.deb`, CLI archives, and consolidated `SHA256SUMS.txt`.
+  - CI checks (`fmt`, `clippy -D warnings`, workspace tests, `cargo-deny`, npm license check, `node --test`, `svelte-check`, `vite build`, version parity), Dependabot, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `docs/ROADMAP.md`, and `docs/RELEASING.md`.

@@ -158,6 +158,41 @@ Format:
 - Reason: Unlocks hardware acceleration for models on compatible GPUs (measured 328 ms inference on Fast tier with DirectML vs 464 ms on CPU) while guaranteeing 100% crash-free stability across heterogeneous hardware configurations without fatal aborts.
 - Alternatives considered: Crashing on GPU out-of-memory (poor UX), enforcing GPU by default (breaks headless/older machines).
 
+### D-023: Desktop IPC Preview Cache via Scoped Asset Protocol & Per-Tier Session Caching
+- Date: 2026-11-25
+- Decision: Eliminate Base64 image payloads over Tauri IPC. Write bounded preview PNGs (`<= 1600 px` longest side) to `$APPCACHE/previews/` and serve them via Tauri's `assetProtocol` scoped strictly to `$APPCACHE/previews/**` under a strict CSP (no remote origins, no `unsafe-eval`, no `shell` or `fs` plugins). Maintain one cached `Remover` session per `ModelTier` in `AppState`, reloading only when tier options (`ExecutionProvider`, refine flag, threads) change. Persist user settings atomically to `settings.json` in `app_config_dir`.
+- Status: accepted
+- Reason: Sending full-resolution 24MP PNGs as Base64 strings over JSON IPC spikes memory and stalls WebView2 serialization, while reloading `BiRefNet` wastes ~3.7s per image. Scoped `asset:` URLs keep IPC messages tiny, enforce least-privilege filesystem access, and clean up automatically on exit.
+- Alternatives considered: Base64 data URLs over IPC (excessive RAM/latency on large images), unrestricted `assetProtocol` scope `**/*` (overly broad filesystem exposure to the webview).
+
+### D-024: Desktop UI/UX Architecture, Virtualized Queue, Zero-Dep Testing, and Backlog Scope
+- Date: 2026-11-25
+- Decision: Implement the PRD Section 8 single-screen layout using pure Svelte 5, system fonts, windowed thumbnail rendering for large queues, zero external i18n/UI libraries, and Node's built-in `node --test` TypeScript runner (`v26.13.0`) for frontend unit tests. Enforce `never_use_network` in Rust alongside SHA-256 verified manual `.onnx` import. Defer `crop to subject` and `WebP / additional export formats` to the post-v1.0 backlog (`docs/TASKS.md`) so Phase 3B exports PNG cleanly without extra scope.
+- Status: accepted
+- Reason: Keeps desktop dependencies minimal, ensures zero-freeze scrolling on 100+ photo queues, preserves offline guarantees, and avoids unrequested format/crop scope creep before v1.0 stabilization.
+- Alternatives considered: Adding Vitest / i18next / Tailwind (unnecessary dependency bloat and license surface).
+
+### D-025: Windows NSIS Installer (`embedBootstrapper`), Single-Source Versioning, and Draft Prereleases
+- Date: 2026-11-25
+- Decision: Standardize Windows desktop distribution on NSIS (`-setup.exe`, `currentUser` installMode) with `webviewInstallMode: "embedBootstrapper"` (`~1.8 MB`), omit `"version"` from `tauri.conf.json` so `Cargo.toml` `[workspace.package].version` is the single source of truth (enforced alongside `package.json` in CI), build macOS `aarch64` `.dmg` (Apple Silicon only; cheap Intel `x86_64-apple-darwin` cross-target build deferred unless requested) and Linux `ubuntu-22.04` `.AppImage`/`.deb`, upgrade GitHub Actions to Node-24-compatible major versions, and publish `v*` tag builds as **draft prereleases** with consolidated `SHA256SUMS.txt`. No code-signing keys or auto-updater.
+- Status: accepted
+- Reason: NSIS produces a compact `9.69 MiB` installer without WiX/VBSCRIPT constraints, handles missing WebView2 reliably via `embedBootstrapper` (avoiding ~127 MB offline WebView2 bloat), and draft prereleases prevent unverified tags from going public before checksum/OS inspection.
+- Alternatives considered: MSI WiX installer (requires Windows-only WiX + VBSCRIPT feature, larger overhead for single-user desktop installs), `offlineInstaller` WebView2 (~127 MB size penalty), adding an auto-updater (adds unwanted background network checks).
+
+### D-026: Public Community Governance, Dependabot Cadence, and Fixture Provenance Escalation
+- Date: 2026-11-25
+- Decision: Adopt verbatim Contributor Covenant v2.1 (`CODE_OF_CONDUCT.md`), private security reporting via GitHub Security Advisories (`SECURITY.md`), weekly Dependabot PRs for Cargo, npm (`/crates/app`), and GitHub Actions (`.github/dependabot.yml`), and flag all unverified/human-subject photographic fixtures in `tests/fixtures/PROVENANCE.md` (`TODO(owner)`) for explicit owner review rather than silently deleting or rewriting git history.
+- Status: accepted
+- Reason: Ensures transparent contributor terms (`GPL-3.0-or-later`), continuous security updates, and protects against accidental redistribution of unverified or identifiable-person photos without taking destructive `git filter-repo` actions without owner consent.
+- Alternatives considered: Skipping provenance audit or rewriting git history automatically (risks data loss or force-push conflicts without owner approval).
+
+### D-027: Banded Guided Filter (`GUIDED_BAND_HEIGHT = 128`) and Reverse-DNS Identifier (`io.github.yehudaaadev.rustmatte`)
+- Date: 2026-11-25
+- Decision: Refactor `crates/core/src/refine.rs` (`guided_filter` and `refine_mask_guided`) to process 128-row horizontal bands with `4 * radius` halos and direct `DynamicImage` pixel reads, eliminating full-frame `Vec<f32>` and `to_rgb8()`/`to_rgba8()` copies. Rename the Tauri bundle identifier from `com.rustmatte.app` to `io.github.yehudaaadev.rustmatte`.
+- Status: accepted
+- Reason: Cuts 24 MP peak working set by ~1.17 GB (Quality `3,352.68 MB` -> `2,185.15 MB`; Fast `1,660.08 MB` -> `492.68 MB`) and cuts postprocessing time ~2x while matching full-frame math within `1.2e-5` `f32` precision (`<= 1` LSB in 8-bit PNG). Reverse-DNS `io.github.yehudaaadev.rustmatte` resolves macOS `.app` bundle warnings; `dirs::data_local_dir()` model cache is unaffected.
+- Alternatives considered: Auto-downscaling large images silently (changes output resolution without consent), `f16` CPU buffers (adds conversion overhead).
+
 ---
 
 ## Superseded Decisions

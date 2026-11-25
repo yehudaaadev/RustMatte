@@ -36,6 +36,17 @@ impl From<CliTier> for ModelTier {
     }
 }
 
+/// Edge refinement level for CLI selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliRefine {
+    /// Disable guided filter and color defringing (raw mask).
+    None,
+    /// Guided filter edge alignment only (no color defringing).
+    Light,
+    /// Guided filter edge alignment and 5x5 boundary color defringing (default per D-021).
+    Standard,
+}
+
 /// Execution provider / hardware device for CLI selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum CliDevice {
@@ -91,7 +102,11 @@ struct Cli {
     #[arg(long = "max-side")]
     max_side: Option<u32>,
 
-    /// Disable postprocessing edge refinement (Guided Filter and color defringing)
+    /// Edge refinement level: none, light, or standard (default: standard)
+    #[arg(long = "refine", default_value = "standard")]
+    refine: CliRefine,
+
+    /// Disable postprocessing edge refinement (alias for --refine none)
     #[arg(long = "no-refine")]
     no_refine: bool,
 
@@ -367,9 +382,15 @@ fn save_image_atomic(image: &RgbaImage, output_path: &Path, overwrite: bool) -> 
 }
 
 fn get_refine_config(cli: &Cli) -> RefineConfig {
-    if cli.no_refine {
+    if cli.no_refine || cli.refine == CliRefine::None {
         RefineConfig {
             enable_guided_filter: false,
+            enable_defringing: false,
+            ..RefineConfig::default()
+        }
+    } else if cli.refine == CliRefine::Light {
+        RefineConfig {
+            enable_guided_filter: true,
             enable_defringing: false,
             ..RefineConfig::default()
         }
