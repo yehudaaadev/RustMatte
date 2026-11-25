@@ -26,7 +26,7 @@ jobs:
             cli_binary: rustmatte
             archive_ext: tar.gz
             tauri_bundles: dmg
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             cli_binary: rustmatte
             archive_ext: tar.gz
@@ -50,7 +50,7 @@ jobs:
           "
 
       - name: Install Linux system dependencies
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -94,12 +94,12 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            APP_BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -name "rustmatte-app" -type f | head -n 1)
+            APP_BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -path "*/Contents/MacOS/*" -type f | head -n 1)
             echo "=== macOS otool -L ==="
             otool -L "${APP_BIN}"
             echo "=== macOS .app contents ==="
             find "target/${{ matrix.target }}/release/bundle/macos" -maxdepth 4
-          elif [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+          elif [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             echo "=== Linux ldd ==="
             ldd "target/${{ matrix.target }}/release/rustmatte-app"
             echo "=== Linux bundle files ==="
@@ -113,8 +113,8 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -name "rustmatte-app" -type f | head -n 1)
-          elif [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+            BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -path "*/Contents/MacOS/*" -type f | head -n 1)
+          elif [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             BIN="target/${{ matrix.target }}/release/rustmatte-app"
           else
             BIN="target/${{ matrix.target }}/release/rustmatte-app.exe"
