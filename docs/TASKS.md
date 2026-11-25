@@ -71,7 +71,7 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
 - [x] Enforce zero full-resolution image data over IPC via bounded (`<= 1600 px`) preview cache in `$APPCACHE/previews/` served through scoped `assetProtocol` + strict CSP in `tauri.conf.json` and `docs/SECURITY_MODEL.md`.
   - Acceptance criterion: Strict CSP configured, `shell`/`fs` plugins omitted, release devtools disabled, preview cache capped and wiped on exit. Verified in code/config; interactive GUI checks pending manual checklist.
 - [x] Adapt Svelte 5 frontend for native dialog open/save, Tauri `onDragDropEvent`, consent-gated model download, live queue progress/cancel, asset-protocol preview slider, persistent settings, and bilingual EN/ID + dark/light toggles.
-  - Acceptance criterion: `npm run check` (`svelte-check`), `npm run build`, and `cargo build --release -j 2 -p rustmatte-app` succeed; release `rustmatte-app.exe` (35.54 MB) launches cleanly on Windows (`25.73 MB` host + `117.23 MB` WebView2 idle RSS). Verified.
+  - Acceptance criterion: `npm run check` (`svelte-check`), `npm run build`, and `npx tauri build --bundles nsis` succeed; earlier Phase 3A `cargo build --release` launch metrics (`25.73 MB` host + `117.23 MB` WebView2 idle RSS) were marked **UNRELIABLE** (could hit `ERR_CONNECTION_REFUSED` without `custom-protocol` or partial WebView2 process accounting) and replaced by verified `mode=custom-protocol origin=http://tauri.localhost` launch telemetry: `2,770 ms` UI ready (`28.28 MB` host + `322.06 MB` across 6 WebView2 processes = `350.34 MB` idle RSS, zero port `1420` traffic). Verified.
 
 ## Phase 3B: Desktop UI/UX and Features
 - [x] Main single-screen layout (large drop zone for photos/folders, windowed left thumbnail queue, center zoom+pan comparison slider on checkerboard, right options panel with honest tier descriptions, Remove background, Save/Save all, progress bar + Cancel).
@@ -85,7 +85,7 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
 
 ## Phase 3C: Desktop Installers and Distribution
 - [x] Configure Windows NSIS installer (`embedBootstrapper` WebView2), single-source version parity (`Cargo.toml` + `package.json` + omitted `tauri.conf.json` version), and verify standalone clean-directory install/launch/uninstall on Windows.
-  - Acceptance criterion: `RustMatte_0.1.0_x64-setup.exe` (`9.69 MiB`) silently installs (`34.43 MiB` on disk), launches standalone in `204 ms` (`41.93 MB` host + `94.77 MB` WebView2 RSS) without `onnxruntime.dll`, and uninstalls cleanly. Verified locally on Windows.
+  - Acceptance criterion: `RustMatte_0.1.0_x64-setup.exe` (`9.69 MiB`) silently installs cleanly, launches standalone in `2,209 ms` to `ui_ready mode=custom-protocol origin=http://tauri.localhost` (`42.02 MB` host + `320.98 MB` across 6 WebView2 processes = `363.00 MB` idle RSS, zero port `1420` traffic; earlier `204 ms` / `94.77 MB` check measured pre-UI `WaitForInputIdle` and marked **UNRELIABLE**), and uninstalls cleanly. Verified locally on Windows.
 - [x] Update `.github/workflows/release.yml` and `.github/workflows/ci.yml` with Node-24-compatible pinned actions, version parity check, multi-OS CLI + desktop bundles (Windows NSIS, macOS `aarch64` `.dmg`, Linux `ubuntu-22.04` `.AppImage`/`.deb` with `otool -L` / `ldd` logs), consolidated `SHA256SUMS.txt`, and draft prerelease output (`GITHUB_TOKEN` only).
   - Acceptance criterion: Workflow YAML parsed cleanly; tagged cloud build UNVERIFIED until `v0.1.0-rc2` is pushed.
 - [x] Complete static no-network code/capability audit and update `README.md` (per-OS install, SmartScreen/Gatekeeper/Linux runtime deps, Verify your download, OS data/model removal), `docs/RELEASING.md`, and `CHANGELOG.md`.
@@ -102,8 +102,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Every Rust crate, npm package, and model weight file documented; `cargo deny` and `npm run license-check` pass. Verified.
 - [ ] Owner manual verification: review `tests/fixtures/PROVENANCE.md`, apply GitHub repository settings/labels, capture `docs/screenshots/`, test Windows installer on clean second machine without dev tools, and review/publish draft prerelease (`v0.1.0-rc2`).
   - Acceptance criterion: Windows installer runs offline on clean machine and owner publishes release.
-- [x] Pre-release fixes: fix 24 MP guided-filter memory regression (`2,185 MB` Quality / `493 MB` Fast), rename identifier to `io.github.yehudaaadev.rustmatte`, fix `svelte-check` a11y warning (`0` warnings), audit comparison table, add `--refine <none|light|standard>` CLI flag, and create logical commits.
-  - Acceptance criterion: `cargo fmt`, `clippy -D warnings`, `cargo test --workspace -j 2`, `cargo deny`, `npm test/check/build/license-check`, and release build pass; clean `git status`. Verified.
+- [x] Pre-release fixes: fix 24 MP guided-filter memory regression (`2,185 MB` Quality / `493 MB` Fast), rename identifier to `io.github.yehudaaadev.rustmatte`, fix `svelte-check` a11y warning (`0` warnings), audit comparison table, add `--refine <none|light|standard>` CLI flag, enforce release `custom-protocol` compile guard + `startup.log` UI verification + CI binary marker check (`D-028`, `P-033`), remove leftover `tests/fixtures/SHA256SUMS`, and create logical commits.
+  - Acceptance criterion: Plain `cargo build --release -p rustmatte-app` fails cleanly at compile time, `npx tauri build --bundles nsis` + `npm run tauri dev` work, `ui_ready mode=custom-protocol origin=http://tauri.localhost` verified offline with 0 port `1420` hits, and full quality gate passes cleanly. Verified.
 
 ---
 

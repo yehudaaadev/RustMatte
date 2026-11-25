@@ -25,7 +25,6 @@ This register catalogs every file in `tests/fixtures/` and every image/icon asse
 | `rambut1.jpg` | 64,918 | 564x1128 | Yes | `TODO(owner)` | `TODO(owner)` | **Flagged (Hair/Portrait)**: `rambut` = hair portrait. Confirm whether real identifiable individual + permission/CC0 license. |
 | `rambut2.jpg` | 195,999 | 1023x1537 | Yes | `TODO(owner)` | `TODO(owner)` | **Flagged (Hair/Portrait)**: `rambut` = hair portrait. Confirm whether real identifiable individual + permission/CC0 license. |
 | `README.md` | 1,282 | - | Yes | Project documentation | GPL-3.0-or-later | Safe (project text). |
-| `SHA256SUMS` | 554 | - | Yes | **Unexpected leftover file** | `TODO(owner)` | **Flagged**: currently contains `opencode-hop-*` hashes unrelated to `tests/fixtures/`. Replace with actual fixture SHA-256 sums or remove. |
 
 ## 2. Other Images and Icons Tracked in the Repository
 

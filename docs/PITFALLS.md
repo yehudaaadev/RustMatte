@@ -202,3 +202,12 @@ Format:
 - Symptom: Processing `large_24mp.jpg` (`6000x4000`) with edge refinement jumped from `2,277 MB` (`--refine none`) to `3,353 MB` on Quality tier and from `584 MB` to `1,660 MB` on Fast tier.
 - Cause: `guided_filter` allocated 13 concurrent full-resolution `Vec<f32>` buffers (`96 MB` each = `1,248 MB`) alongside `orig.to_rgb8()` (`72 MB`) and `orig.to_rgba8()` (`96 MB`) copies.
 - Fix or avoidance: Process `guided_filter` in 128-row horizontal bands with `4 * radius` halos, reuse band scratch buffers, and read pixels directly from `DynamicImage` without full-frame RGB/RGBA copies (`D-027`). Note that resetting the vertical sliding-window `f32` sum per band eliminates cross-image float drift (`~1.2e-5`), which can flip a few edge pixels by 1 LSB (changing PNG SHA-256 hashes while preserving visual equivalence).
+
+### P-033: Plain Cargo Release Build Loads Tauri `devUrl` and Process Liveness Misses WebView2 `ERR_CONNECTION_REFUSED`
+- Date: 2026-11-25
+- Symptom: Launching `target\release\rustmatte-app.exe` built via plain `cargo build --release -p rustmatte-app` opens a window whose title reads `RustMatte - Offline AI Background Remover`, with `HasExited = False` and `Responding = True`, yet WebView2 shows `"Hmmm... can't reach this page. localhost refused to connect. ERR_CONNECTION_REFUSED"`.
+- Cause: In pinned `tauri = "=2.12.7"`, `tauri::is_dev()` is `!cfg!(feature = "custom-protocol")`. `npx tauri build` passes `--features tauri/custom-protocol` (and runs `beforeBuildCommand`), whereas plain `cargo build --release -p rustmatte-app` compiles with `devUrl` (`http://localhost:1420`). Checking OS process liveness (`HasExited`/`Responding`) cannot detect a WebView2 error page inside an otherwise live native window.
+- Fix or avoidance:
+  1. Never add `custom-protocol` to `default` features (doing so turns off `tauri::is_dev()` during `npm run tauri dev`); declare optional `custom-protocol = ["tauri/custom-protocol"]` and enforce `#[cfg(all(not(debug_assertions), dev, not(test)))] compile_error!(...)` in `crates/app/src-tauri/src/lib.rs` (`D-028`).
+  2. Emit a frontend-mounted readiness signal (`notify_frontend_ready`) to `$APPCACHE/startup.log` (`ui_ready mode=custom-protocol origin=http://tauri.localhost`) and verify port `1420` has zero connection activity during offline launch tests.
+  3. Add a binary marker check in `.github/workflows/release.yml` across Windows, macOS, and Linux failing any build in `dev-url` mode.

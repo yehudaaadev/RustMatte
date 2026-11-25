@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Added compile-time `#[cfg(all(not(debug_assertions), dev, not(test)))]` guard preventing plain `cargo build --release -p rustmatte-app` from producing a binary pointed at `devUrl` (`http://localhost:1420`) instead of bundled frontend assets (`D-028`, `P-033`), plus `notify_frontend_ready` (`$APPCACHE/startup.log`) and a multi-OS `RUSTMATTE_BUILD_MODE=custom-protocol` check in `.github/workflows/release.yml`.
 - Eliminated ~1.17 GB peak working set spike at 24 MP during edge refinement by processing the Guided Filter in 128-row horizontal bands and reading image pixels directly without full-frame `to_rgb8()`/`to_rgba8()` copies (Quality 24 MP: `3,352.68 MB` -> `2,185.15 MB`; Fast 24 MP: `1,660.08 MB` -> `492.68 MB`; postprocessing ~2x faster).
 - Added explicit `--refine <none|light|standard>` CLI option (default `standard` per `D-021`, keeping `--no-refine` alias).
 - Changed desktop bundle identifier from `com.rustmatte.app` to `io.github.yehudaaadev.rustmatte` (resolves macOS `.app` suffix collision warning).
 - Resolved `svelte-check` accessibility warning on comparison slider viewport (`0` errors, `0` warnings) with `use:bindViewportEvents` + `role="region"` and keyboard zoom/pan support.
+- Removed leftover unrelated `tests/fixtures/SHA256SUMS` file.
 
 ## [0.1.0] - 2026-11-25 (Pre-Release)
 

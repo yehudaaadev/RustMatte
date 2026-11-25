@@ -253,6 +253,14 @@
         }
       })
     );
+
+    try {
+      await invoke("notify_frontend_ready", {
+        origin: window.location.origin,
+      });
+    } catch {
+      // Ignore outside Tauri runtime.
+    }
   });
 
   onDestroy(() => {

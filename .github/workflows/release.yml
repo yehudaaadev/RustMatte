@@ -109,6 +109,26 @@ jobs:
             ls -la "target/${{ matrix.target }}/release" | head -n 30
           fi
 
+      - name: Verify desktop binary uses custom-protocol instead of devUrl
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            BIN=$(find "target/${{ matrix.target }}/release/bundle/macos" -name "rustmatte-app" -type f | head -n 1)
+          elif [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+            BIN="target/${{ matrix.target }}/release/rustmatte-app"
+          else
+            BIN="target/${{ matrix.target }}/release/rustmatte-app.exe"
+          fi
+          BIN_PATH="${BIN}" python3 -c "
+          import os, pathlib
+          p = pathlib.Path(os.environ['BIN_PATH'])
+          assert p.is_file(), f'Missing desktop binary: {p}'
+          data = p.read_bytes()
+          assert b'RUSTMATTE_BUILD_MODE=custom-protocol' in data, f'Binary {p} is missing custom-protocol build marker'
+          assert b'RUSTMATTE_BUILD_MODE=dev-url' not in data, f'Binary {p} depends on devUrl'
+          print(f'Verified custom-protocol production build mode in {p}')
+          "
+
       - name: Stage CLI archive and desktop installers
         shell: bash
         run: |

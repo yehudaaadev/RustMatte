@@ -27,7 +27,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace -j 2
 cargo deny check licenses
 cargo deny check advisories
+# Desktop release build (must use Tauri CLI so custom-protocol + npm run build run):
+cd crates/app && npx tauri build --no-bundle && cd ../..
 ```
+Note: Plain `cargo build --release -p rustmatte-app` is blocked at compile time because it omits `custom-protocol` (`P-033`). `.github/workflows/release.yml` builds via `npx tauri build` on all three OSes and runs a post-build binary check confirming `RUSTMATTE_BUILD_MODE=custom-protocol` (without `dev-url`).
 
 ## 3. Triggering a Tagged Draft Prerelease
 `.github/workflows/release.yml` runs on any pushed `v*` tag using only the default `GITHUB_TOKEN`:

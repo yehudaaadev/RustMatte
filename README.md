@@ -156,6 +156,11 @@ cargo build --workspace
 cargo test --workspace -j 2
 ```
 
+### Supported Ways to Run or Package the Desktop App
+- **Installed App (recommended for users)**: Install via the Windows NSIS setup (`RustMatte_<ver>_x64-setup.exe`), macOS `.dmg`, or Linux `.AppImage`/`.deb`.
+- **Desktop Dev Mode (hot reload)**: From `crates/app`, run `npm run tauri dev` (runs Vite on `http://localhost:1420` + debug Tauri host).
+- **Local Release Build / Bundle**: From `crates/app`, run `npx tauri build` (or `npx tauri build --no-bundle`) — this runs `npm run build` and enables Tauri's `custom-protocol` feature so the binary serves embedded frontend assets instead of `devUrl`. Plain `cargo build --release -p rustmatte-app` is intentionally blocked at compile time unless `--features custom-protocol` is enabled after `npm run build`.
+
 ### Quality Gate
 ```bash
 cargo fmt --all -- --check

@@ -23,8 +23,16 @@ npm ci
 npm test
 npm run check
 npm run build
+
+# Run desktop app in development mode (with Vite dev server)
+npm run tauri dev
+
+# Build production desktop binary/bundle (embeds ../build via custom-protocol)
+npx tauri build --no-bundle
 cd ../..
 ```
+
+Note: Do not run plain `cargo build --release -p rustmatte-app` to produce a standalone desktop binary; without Tauri's `custom-protocol` feature, Tauri compiles `devUrl` (`http://localhost:1420`) instead of embedded assets. The crate enforces this with a compile-time error in release builds unless `npx tauri build` or `--features custom-protocol` is used.
 
 ### Windows MSVC Build Note
 On Windows systems using MSVC, running `cargo test --workspace` concurrently with high thread counts can cause `link.exe` to exceed virtual memory limits (`fatal error LNK1102: out of memory`). Always throttle test linking using `-j 2` (see Pitfall `P-025` in `docs/PITFALLS.md`).

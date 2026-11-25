@@ -7,6 +7,18 @@ mod settings;
 mod state;
 mod validation;
 
+#[cfg(all(not(debug_assertions), dev, not(test)))]
+compile_error!(
+    "Release builds of `rustmatte-app` require Tauri's `custom-protocol` feature so embedded frontend assets are served instead of `devUrl` (`http://localhost:1420`). Build with `npx tauri build` inside `crates/app`, or `cargo build --release -p rustmatte-app --features custom-protocol` after `npm run build`."
+);
+
+#[used]
+static RUSTMATTE_BUILD_MODE_MARKER: &[u8] = if cfg!(dev) {
+    b"RUSTMATTE_BUILD_MODE=dev-url\0"
+} else {
+    b"RUSTMATTE_BUILD_MODE=custom-protocol\0"
+};
+
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
@@ -166,6 +178,44 @@ fn settings_file_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_config_dir()
         .map_err(|e| format!("Failed to resolve app config directory: {e}"))?;
     Ok(base.join("settings.json"))
+}
+
+fn startup_log_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("Failed to resolve app cache directory: {e}"))?;
+    Ok(base.join("startup.log"))
+}
+
+fn sanitize_origin(origin: &str) -> String {
+    let Some((scheme, rest)) = origin.trim().split_once("://") else {
+        return "unknown".to_string();
+    };
+    let clean_scheme: String = scheme
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '-' || *c == '.')
+        .take(16)
+        .collect();
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host_port = authority.rsplit('@').next().unwrap_or("");
+    let clean_host: String = host_port
+        .chars()
+        .filter(|c| {
+            c.is_ascii_alphanumeric()
+                || *c == '.'
+                || *c == '-'
+                || *c == ':'
+                || *c == '['
+                || *c == ']'
+        })
+        .take(128)
+        .collect();
+    if clean_scheme.is_empty() || clean_host.is_empty() {
+        "unknown".to_string()
+    } else {
+        format!("{clean_scheme}://{clean_host}")
+    }
 }
 
 fn tier_status_from_spec(tier: ModelTier, caveat: Option<String>) -> ModelTierStatus {
@@ -885,6 +935,25 @@ mod commands {
             tier,
         }
     }
+
+    #[tauri::command]
+    pub fn notify_frontend_ready(app: AppHandle, origin: String) -> Result<String, String> {
+        let mode = if tauri::is_dev() {
+            "dev-url"
+        } else {
+            "custom-protocol"
+        };
+        let safe_origin = crate::sanitize_origin(&origin);
+        let line = format!("ui_ready mode={mode} origin={safe_origin}");
+        eprintln!("{line}");
+        if let Ok(path) = crate::startup_log_path(&app) {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&path, format!("{line}\n"));
+        }
+        Ok(line)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -893,6 +962,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .setup(|app| {
+            if let Ok(log_path) = startup_log_path(app.handle()) {
+                let _ = std::fs::remove_file(&log_path);
+            }
             if let Ok(cache_dir) = preview_cache_dir(app.handle()) {
                 preview::cleanup_preview_cache(&cache_dir);
                 let _ = std::fs::create_dir_all(&cache_dir);
@@ -912,7 +984,8 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::get_about_info,
-            commands::get_diagnostic_info
+            commands::get_diagnostic_info,
+            commands::notify_frontend_ready
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -938,4 +1011,26 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_origin;
+
+    #[test]
+    fn sanitize_origin_strips_paths_queries_and_credentials() {
+        assert_eq!(
+            sanitize_origin("http://tauri.localhost"),
+            "http://tauri.localhost"
+        );
+        assert_eq!(
+            sanitize_origin("tauri://localhost/secret/path?user=alice#hash"),
+            "tauri://localhost"
+        );
+        assert_eq!(
+            sanitize_origin("http://user:pass@localhost:1420/app"),
+            "http://localhost:1420"
+        );
+        assert_eq!(sanitize_origin("C:\\Users\\Alice\\file.html"), "unknown");
+    }
 }

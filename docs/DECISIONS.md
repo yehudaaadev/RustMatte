@@ -193,6 +193,13 @@ Format:
 - Reason: Cuts 24 MP peak working set by ~1.17 GB (Quality `3,352.68 MB` -> `2,185.15 MB`; Fast `1,660.08 MB` -> `492.68 MB`) and cuts postprocessing time ~2x while matching full-frame math within `1.2e-5` `f32` precision (`<= 1` LSB in 8-bit PNG). Reverse-DNS `io.github.yehudaaadev.rustmatte` resolves macOS `.app` bundle warnings; `dirs::data_local_dir()` model cache is unaffected.
 - Alternatives considered: Auto-downscaling large images silently (changes output resolution without consent), `f16` CPU buffers (adds conversion overhead).
 
+### D-028: Compile-Time Dev-URL Guard in Release Desktop Builds and Frontend Startup Verification Signal
+- Date: 2026-11-25
+- Decision: Keep `default = []` and declare optional `custom-protocol = ["tauri/custom-protocol"]` in `crates/app/src-tauri/Cargo.toml` (preserving `npm run tauri dev` live-reload behavior), add a compile-time `#[cfg(all(not(debug_assertions), dev, not(test)))] compile_error!(...)` guard plus binary `RUSTMATTE_BUILD_MODE` marker in `crates/app/src-tauri/src/lib.rs`, add `notify_frontend_ready` writing `ui_ready mode=... origin=...` to `$APPCACHE/startup.log` (no file paths or user data), and verify `RUSTMATTE_BUILD_MODE=custom-protocol` across all three OS targets in `.github/workflows/release.yml`.
+- Status: accepted
+- Reason: In pinned `tauri = "=2.12.7"`, `is_dev()` checks `!cfg!(feature = "custom-protocol")`, so plain `cargo build --release -p rustmatte-app` compiled `http://localhost:1420` into the binary and produced WebView2 `ERR_CONNECTION_REFUSED` while appearing alive via process-level checks. Putting `custom-protocol` in `default` would disable `is_dev()` during `npm run tauri dev`, so a compile-time release guard + CI marker check + real UI startup log is safer and unambiguous.
+- Alternatives considered: Making `custom-protocol` a default Cargo feature (breaks `npm run tauri dev` `devUrl` loading because Tauri v2 CLI does not pass `--no-default-features` automatically on `tauri dev`), keeping undocumented `cargo build --release` hazard.
+
 ---
 
 ## Superseded Decisions
