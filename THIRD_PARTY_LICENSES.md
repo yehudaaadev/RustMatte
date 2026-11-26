@@ -15,6 +15,7 @@ Rule: Every external dependency (Rust crate, frontend package, tool) and every m
 | `clap` | crate | `4.5.31` | MIT OR Apache-2.0 | `https://crates.io/crates/clap` | Yes | Command-line argument parser with derive in CLI binary |
 | `ureq` | crate | `2.10.1` | MIT OR Apache-2.0 | `https://crates.io/crates/ureq` | Yes | Pure-Rustls blocking HTTP client for model downloading |
 | `dirs` | crate | `6.0.0` | MIT OR Apache-2.0 | `https://crates.io/crates/dirs` | Yes | Standard OS application data directory lookup |
+| `sysinfo` | crate | `0.40.4` | MIT | `https://crates.io/crates/sysinfo` | Yes | Local available RAM and disk space detection (`system`, `disk` features only; no network) |
 | `tauri` | crate | `2.12.7` | Apache-2.0 OR MIT | `https://crates.io/crates/tauri` | Yes | Tauri 2 desktop application framework (`protocol-asset` enabled) |
 | `tauri-build` | crate | `2.7.6` | Apache-2.0 OR MIT | `https://crates.io/crates/tauri-build` | Yes | Tauri 2 build-time codegen and CSP asset hashing |
 | `tauri-plugin-dialog` | crate | `2.8.4` | Apache-2.0 OR MIT | `https://crates.io/crates/tauri-plugin-dialog` | Yes | Native OS open/save file dialogs for Tauri 2 |

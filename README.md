@@ -79,7 +79,9 @@ rustmatte photo.jpg -o cutout.png --no-download
 
 # Manage cached model weights
 rustmatte models list
-rustmatte models download --tier quality --yes
+rustmatte models download --tier balanced --yes
+rustmatte models verify
+rustmatte models delete --tier fast --yes
 ```
 
 ### CLI Exit Codes

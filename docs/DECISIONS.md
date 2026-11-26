@@ -243,6 +243,13 @@ Format:
 - Reason: Closes all technical carry-over checks on the `D-032` refinement rewrite before starting Phase 5A manifest and downloader architecture work.
 - Alternatives considered: Lowering or removing `q <= 0.06` suppression (re-introduces faint smear halos along hair/fur edges without meaningful whisker recovery).
 
+### D-035: Phase 5A RAM/Disk Probing (`sysinfo`), Manifest/Recommender, and Resumable Downloader
+- Date: 2026-11-26
+- Decision: (1) Adopt `sysinfo = "=0.40.4"` (`default-features = false, features = ["system", "disk"]`, `MIT` license, registered in `THIRD_PARTY_LICENSES.md`) in `crates/core` for cross-platform `available_memory()` and disk `available_space()` probing without network access. (2) Keep `LOW_RAM_THRESHOLD_MB = 3072` (`3 GiB`) and `MID_RAM_THRESHOLD_MB = 5120` (`5 GiB`) unchanged after validating against the Phase 5.0 24 MP Balanced measurement (`2,191.39 MB` Peak Working Set / `2,571.77 MB` Peak Commit). (3) Implement typed static manifest validation (`crates/core/src/manifest.rs`), pure recommendation logic (`crates/core/src/recommend.rs`), `size + 10%` disk checks, HTTP `Range` resume via `.part` + `.part.meta.json` with full-file SHA-256 verification before atomic rename (`crates/core/src/download.rs`), and `rustmatte models list|download|delete|verify` (`crates/cli/src/main.rs`).
+- Status: accepted
+- Reason: `sysinfo` (`0.40.4`) reads actual available memory across Windows/macOS/Linux under an `MIT` license already permitted by `deny.toml`, supports disk free-space probing in the same single dependency with `network`/`component`/`gpu`/`user` disabled, and avoids `systemstat` (`Unlicense` outside `deny.toml` allow-list, reads `MemFree` on Linux) and `sys-info` (requires C compiler via `cc`, less active maintenance).
+- Alternatives considered: `sys-info = "0.9.1"` (requires `cc` C build step and lacks per-path disk mount matching), `systemstat = "0.2.8"` (`Unlicense` not in `deny.toml`), adding a separate `toml` parser crate for manifest loading (unnecessary dependency when static typed entries satisfy §7.1 validation).
+
 ---
 
 ## Superseded Decisions

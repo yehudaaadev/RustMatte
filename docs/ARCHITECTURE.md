@@ -21,19 +21,22 @@ RustMatte/
 
 ## Crate Responsibilities and Implemented Modules
 
-### `crates/core` (Implemented in Phase 1C-1 and Phase 1C-2)
+### `crates/core` (Implemented through Phase 5A)
 Core background removal engine library. Contains no UI code and performs zero terminal printing.
-- `src/error.rs`: Strongly typed `CoreError` using `thiserror` (handling decode errors, dimension bounds, missing models, checksum mismatches, ORT session errors, network/download errors, and I/O).
-- `src/model.rs`: Defines `ModelTier` (`Quality`, `Fast`), `ModelSpec` manifest (metadata, sizes, SHA-256 hashes, licenses, source URLs), OS cache directory resolution via `dirs`, and hierarchical lookup (`--model-path` > `RUSTMATTE_MODEL_DIR` > OS cache dir > `./models/`).
-- `src/download.rs`: Safe streaming HTTPS model downloader with localhost test overrides, `.part` atomic rename, redirect limits, timeouts, progress callbacks, and SHA-256 verification.
+- `src/error.rs`: Strongly typed `CoreError` using `thiserror` (handling decode errors, dimension bounds, missing models, checksum mismatches, insufficient disk space, cancellation, ORT session errors, network/download errors, and I/O).
+- `src/manifest.rs`: Model manifest schema and validation (`balanced` / `birefnet_lite_512` and `fast` / `u2netp` entries, tensor input specs, measured hardware data, dictionary profile tag codes, and minimum available RAM).
+- `src/model.rs`: Defines `ModelTier` (`Quality`, `Fast`), `ModelSpec`, OS cache directory resolution via `dirs`, hierarchical lookup (`--model-path` > `RUSTMATTE_MODEL_DIR` > OS cache dir > `./models/`), and cache deletion (`delete_cached_model`).
+- `src/sysinfo.rs`: Local available RAM and filesystem free-space probing via `sysinfo` (`system` and `disk` features only, no network access) with injectable test probes and `size + 10%` disk margin checks.
+- `src/recommend.rs`: Pure, side-effect-free recommendation engine (`PRD_V2.md` §7.4 table + named `LOW_RAM_THRESHOLD_MB = 3072` / `MID_RAM_THRESHOLD_MB = 5120` thresholds).
+- `src/download.rs`: Safe streaming HTTPS model downloader with localhost test overrides, disk-space preflight, HTTP `Range` resume (`206 Partial Content` / `200 OK` fallback) via `.part` + `.part.meta.json`, retry backoff, cancel preserving partial state, full-file SHA-256 verification, and atomic rename.
 - `src/session.rs`: Handles ONNX Runtime session creation and hardware execution providers (`ExecutionProvider::Cpu`, `DirectML`, `CoreML`, `Auto`). Enforces D-015 memory allocator settings (`with_memory_pattern(false)` and `session.use_env_allocators = 1`), calculates default thread heuristic (half logical CPUs clamped to 2..=8), and implements multi-stage graceful CPU fallback during session creation and inference execution.
 - `src/decode.rs`: Safe image decoding with dimension bounds (16384px limit, 512MB max allocation), EXIF orientation correction, and truncation/damage detection (`Warning::DamagedInput`).
 - `src/pipeline.rs`: Preprocessing (RGB triangle resize and NCHW tensor normalization), postprocessing (raw logits sigmoid/min-max to 8-bit mask and bilinear upscaling), `refine_mask` hook for Phase 1D, and `apply_mask` alpha blending.
-- `src/lib.rs`: Minimal public API (`Config`, `Output`, `StageTimings`, `Remover::new`, `Remover::process`, `download_model`). Manages global ORT environment safely across instances via `std::sync::OnceLock`.
+- `src/lib.rs`: Minimal public API (`Config`, `Output`, `StageTimings`, `Remover::new`, `Remover::process`, `download_model`, `recommend_model`, `manifest_entries`, `detect_available_memory_mb`, `check_disk_space`). Manages global ORT environment safely across instances via `std::sync::OnceLock`.
 
-### `crates/cli` (Implemented through Phase 1D-1)
+### `crates/cli` (Implemented through Phase 5A)
 Lightweight command-line interface binary using `clap` (derive). Thin wrapper around `crates/core`.
-- `src/main.rs`: Argument parsing (`rustmatte <INPUT> [-o <OUTPUT>] [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite] [--skip-existing] [--max-side N] [--recursive] [--yes] [--no-download] [--verbose]`), prefetch subcommand (`rustmatte models [list|download]`), interactive download disclosure/consent (`[y/N]`), atomic file creation via temp files, warning output to stderr, and `--verbose` per-stage execution timing breakdown. Returns exit codes: `0` (all ok), `1` (total failure / bad args), `2` (partial failure).
+- `src/main.rs`: Argument parsing (`rustmatte <INPUT> [-o <OUTPUT>] [--tier quality|fast] [--model-path <FILE>] [--threads N] [--overwrite] [--skip-existing] [--max-side N] [--recursive] [--yes] [--no-download] [--verbose]`), model management subcommands (`rustmatte models [list|download|delete|verify]`), interactive download disclosure/consent (`[y/N]`), atomic file creation via temp files, warning output to stderr, and `--verbose` per-stage execution timing breakdown. Returns exit codes: `0` (all ok), `1` (total failure / bad args), `2` (partial failure).
 - `src/batch.rs`: Batch image discovery, recursive directory traversal with symlink traversal boundaries, batch limit warnings (>1,000 files), and deterministic collision resolution (conflicting files with identical stems in the same folder resolve to `<stem>_<ext>.png`).
 
 ### `crates/app` (Phase 3A Foundation & Phase 3B UI/UX Implemented)
