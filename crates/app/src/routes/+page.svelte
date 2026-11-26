@@ -27,6 +27,7 @@
     enqueuePaths,
     failModelDownload,
     finishJob,
+    hasStaleProcessedItems,
     markModelMissing,
     selectAdjacent,
     setDownloadProgress,
@@ -36,6 +37,7 @@
     summarizeQueue,
     type FinishedPayload,
     type ProgressPayload,
+    type QueueItem,
   } from "$lib/queue";
 
   type ThemeMode = "system" | "light" | "dark";
@@ -112,6 +114,9 @@
     qState.phase === "loading_model" || qState.phase === "processing"
   );
   let isDownloading = $derived(qState.phase === "downloading_model");
+  let hasStaleResults = $derived(
+    !isBusy && hasStaleProcessedItems(qState, selectedTier, refineLevel, maxSide)
+  );
 
   let isDragOver = $state(false);
   let activeError = $state<FriendlyError | null>(null);
@@ -620,6 +625,18 @@
     }
   }
 
+  function formatProcessedModel(item: QueueItem): string {
+    const tierText =
+      item.processedTier === "fast" ? t.tierFastName : t.tierQualityName;
+    const refineText =
+      item.processedRefine === "none"
+        ? t.refineNone
+        : item.processedRefine === "light"
+        ? t.refineLight
+        : t.refineStandard;
+    return item.processedRefine ? `${tierText} - ${refineText}` : tierText;
+  }
+
   function resetViewTransform() {
     sliderState = resetSliderForNewPhoto(sliderState);
     zoom = 1;
@@ -952,6 +969,12 @@
           </div>
         {/if}
 
+        {#if hasStaleResults}
+          <div class="banner warning" role="status">
+            <span>{t.staleSettingsBanner}</span>
+          </div>
+        {/if}
+
         {#if summary.oomWarnings > 0}
           <div class="banner warning" role="status">
             <span>{t.oomWarningBanner}</span>
@@ -1084,6 +1107,9 @@
           {#if selectedItem}
             <div class="stats-bar">
               <span><strong>{t.activeDeviceLabel}:</strong> {selectedItem.device}</span>
+              {#if selectedItem.processedTier}
+                <span><strong>{t.processedModelLabel}:</strong> {formatProcessedModel(selectedItem)}</span>
+              {/if}
               <span><strong>{t.dimensionsLabel}:</strong> {selectedItem.width} x {selectedItem.height}</span>
               <span><strong>{t.inferenceTimeLabel}:</strong> {(selectedItem.inferenceMs ?? 0).toFixed(0)} ms</span>
               <span><strong>{t.totalTimeLabel}:</strong> {(selectedItem.timingMs ?? 0).toFixed(0)} ms</span>

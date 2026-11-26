@@ -93,6 +93,8 @@ export interface Translations {
   thumbPlaceholder: string;
   statsTitle: string;
   activeDeviceLabel: string;
+  processedModelLabel: string;
+  staleSettingsBanner: string;
   dimensionsLabel: string;
   inferenceTimeLabel: string;
   totalTimeLabel: string;
@@ -263,6 +265,9 @@ export const dictionaries: Record<Lang, Translations> = {
     thumbPlaceholder: "IMG",
     statsTitle: "Run Summary",
     activeDeviceLabel: "Device used",
+    processedModelLabel: "Model used",
+    staleSettingsBanner:
+      "Settings changed since processing. Click 'Remove background' to reprocess before saving, or Save will export the previous run.",
     dimensionsLabel: "Resolution",
     inferenceTimeLabel: "Inference",
     totalTimeLabel: "Total",
@@ -444,6 +449,9 @@ export const dictionaries: Record<Lang, Translations> = {
     thumbPlaceholder: "FOTO",
     statsTitle: "Ringkasan Proses",
     activeDeviceLabel: "Perangkat dipakai",
+    processedModelLabel: "Model dipakai",
+    staleSettingsBanner:
+      "Pengaturan berubah setelah proses terakhir. Klik 'Hapus latar belakang' untuk memproses ulang sebelum menyimpan, atau tombol Simpan tetap mengekspor hasil sebelumnya.",
     dimensionsLabel: "Resolusi",
     inferenceTimeLabel: "Inferensi",
     totalTimeLabel: "Total",

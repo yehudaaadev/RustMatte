@@ -7,6 +7,7 @@ import {
   enqueuePaths,
   failModelDownload,
   finishJob,
+  hasStaleProcessedItems,
   markModelMissing,
   selectAdjacent,
   setDownloadProgress,
@@ -73,7 +74,15 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
     width: 6000,
     height: 4000,
     device: "CPU",
+    tier: "quality",
+    refine_level: "standard",
+    max_side: null,
   });
+
+  assert.equal(hasStaleProcessedItems(state, "quality", "standard", null), false);
+  assert.equal(hasStaleProcessedItems(state, "fast", "standard", null), true);
+  assert.equal(hasStaleProcessedItems(state, "quality", "light", null), true);
+  assert.equal(hasStaleProcessedItems(state, "quality", "standard", 1024), true);
 
   state = applyProgressEvent(state, {
     index: 2,
@@ -123,6 +132,14 @@ test("queue state machine transitions cleanly across all lifecycle states", () =
     total_ms: 200,
   });
   assert.equal(state.phase, "cancelled");
+
+  // Re-running must clear stale previews, timings, and model metadata while waiting.
+  state = startJob(state, true);
+  assert.equal(state.items[0].cutoutPreviewPath, undefined);
+  assert.equal(state.items[0].fullCutoutPath, undefined);
+  assert.equal(state.items[0].inferenceMs, undefined);
+  assert.equal(state.items[0].processedTier, undefined);
+  assert.equal(hasStaleProcessedItems(state, "fast", "standard", null), false);
 
   state = clearQueue(state);
   assert.equal(state.phase, "empty");

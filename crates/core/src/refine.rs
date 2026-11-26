@@ -414,15 +414,240 @@ fn read_pixel_rgb(orig: &DynamicImage, x: u32, y: u32) -> [u8; 3] {
     }
 }
 
-/// Refines a mask using Guided Filter with selective transition zone feathering.
+#[derive(Clone, Copy)]
+struct BandWindow {
+    width: usize,
+    total_height: usize,
+    radius: usize,
+    src_y_offset: usize,
+    src_rows: usize,
+    out_start: usize,
+    out_end: usize,
+    n_inv: f32,
+}
+
+#[inline]
+fn box_filter_mean_band(src: &[f32], scratch: &mut [f32], dst: &mut [f32], win: BandWindow) {
+    let BandWindow {
+        width,
+        total_height,
+        radius,
+        src_y_offset,
+        src_rows,
+        out_start,
+        out_end,
+        n_inv,
+    } = win;
+    let in_len = width * src_rows;
+    let out_len = width * (out_end - out_start);
+    box_filter_horizontal(
+        &src[..in_len],
+        &mut scratch[..in_len],
+        width,
+        src_rows,
+        radius,
+    );
+    box_filter_vertical_band_into(
+        &scratch[..in_len],
+        &mut dst[..out_len],
+        width,
+        total_height,
+        radius,
+        src_y_offset,
+        out_start,
+        out_end,
+    );
+    for v in &mut dst[..out_len] {
+        *v *= n_inv;
+    }
+}
+
+struct ColorBandBuffers {
+    r: Vec<f32>,
+    g: Vec<f32>,
+    b: Vec<f32>,
+    p: Vec<f32>,
+    scratch: Vec<f32>,
+    temp: Vec<f32>,
+    mean_r: Vec<f32>,
+    mean_g: Vec<f32>,
+    mean_b: Vec<f32>,
+    mean_p: Vec<f32>,
+    var_rr: Vec<f32>,
+    var_rg: Vec<f32>,
+    var_rb: Vec<f32>,
+    var_gg: Vec<f32>,
+    var_gb: Vec<f32>,
+    var_bb: Vec<f32>,
+    cov_rp: Vec<f32>,
+    cov_gp: Vec<f32>,
+    cov_bp: Vec<f32>,
+}
+
+impl ColorBandBuffers {
+    fn new(width: usize, max_in_rows: usize, max_mid_rows: usize) -> Self {
+        let in_cap = width * max_in_rows;
+        let mid_cap = width * max_mid_rows;
+        Self {
+            r: vec![0.0f32; in_cap],
+            g: vec![0.0f32; in_cap],
+            b: vec![0.0f32; in_cap],
+            p: vec![0.0f32; in_cap],
+            scratch: vec![0.0f32; in_cap],
+            temp: vec![0.0f32; in_cap],
+            mean_r: vec![0.0f32; mid_cap],
+            mean_g: vec![0.0f32; mid_cap],
+            mean_b: vec![0.0f32; mid_cap],
+            mean_p: vec![0.0f32; mid_cap],
+            var_rr: vec![0.0f32; mid_cap],
+            var_rg: vec![0.0f32; mid_cap],
+            var_rb: vec![0.0f32; mid_cap],
+            var_gg: vec![0.0f32; mid_cap],
+            var_gb: vec![0.0f32; mid_cap],
+            var_bb: vec![0.0f32; mid_cap],
+            cov_rp: vec![0.0f32; mid_cap],
+            cov_gp: vec![0.0f32; mid_cap],
+            cov_bp: vec![0.0f32; mid_cap],
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn process_band(
+        &mut self,
+        width: usize,
+        height: usize,
+        radius: usize,
+        eps: f32,
+        y0: usize,
+        y1: usize,
+        top_a: usize,
+        bot_a: usize,
+        top_in: usize,
+        bot_in: usize,
+    ) {
+        let in_rows = bot_in - top_in;
+        let mid_rows = bot_a - top_a;
+        let in_len = width * in_rows;
+        let mid_len = width * mid_rows;
+        let out_len = width * (y1 - y0);
+        let n_inv = 1.0f32 / ((2 * radius + 1) * (2 * radius + 1)) as f32;
+
+        // Pass 1: means of R, G, B, p
+        let mean_win = BandWindow {
+            width,
+            total_height: height,
+            radius,
+            src_y_offset: top_in,
+            src_rows: in_rows,
+            out_start: top_a,
+            out_end: bot_a,
+            n_inv,
+        };
+        box_filter_mean_band(&self.r, &mut self.scratch, &mut self.mean_r, mean_win);
+        box_filter_mean_band(&self.g, &mut self.scratch, &mut self.mean_g, mean_win);
+        box_filter_mean_band(&self.b, &mut self.scratch, &mut self.mean_b, mean_win);
+        box_filter_mean_band(&self.p, &mut self.scratch, &mut self.mean_p, mean_win);
+
+        // Pass 1b: 3x3 covariance of RGB guidance and cross-covariance with p
+        let pairs: [(&[f32], &[f32], &mut [f32]); 9] = [
+            (&self.r, &self.r, &mut self.var_rr),
+            (&self.r, &self.g, &mut self.var_rg),
+            (&self.r, &self.b, &mut self.var_rb),
+            (&self.g, &self.g, &mut self.var_gg),
+            (&self.g, &self.b, &mut self.var_gb),
+            (&self.b, &self.b, &mut self.var_bb),
+            (&self.r, &self.p, &mut self.cov_rp),
+            (&self.g, &self.p, &mut self.cov_gp),
+            (&self.b, &self.p, &mut self.cov_bp),
+        ];
+        for (c1, c2, dst) in pairs {
+            for i in 0..in_len {
+                self.temp[i] = c1[i] * c2[i];
+            }
+            box_filter_mean_band(&self.temp, &mut self.scratch, dst, mean_win);
+        }
+
+        // Solve 3x3 linear system (Sigma + eps*I) * a = cov_Ip in-place (storing a_r,a_g,a_b,b into cov_rp,cov_gp,cov_bp,mean_p).
+        for i in 0..mid_len {
+            let mr = self.mean_r[i];
+            let mg = self.mean_g[i];
+            let mb = self.mean_b[i];
+            let mp = self.mean_p[i];
+
+            let c00 = (self.var_rr[i] - mr * mr).max(0.0) + eps;
+            let c01 = self.var_rg[i] - mr * mg;
+            let c02 = self.var_rb[i] - mr * mb;
+            let c11 = (self.var_gg[i] - mg * mg).max(0.0) + eps;
+            let c12 = self.var_gb[i] - mg * mb;
+            let c22 = (self.var_bb[i] - mb * mb).max(0.0) + eps;
+
+            let crp = self.cov_rp[i] - mr * mp;
+            let cgp = self.cov_gp[i] - mg * mp;
+            let cbp = self.cov_bp[i] - mb * mp;
+
+            let cof00 = c11 * c22 - c12 * c12;
+            let cof01 = c02 * c12 - c01 * c22;
+            let cof02 = c01 * c12 - c02 * c11;
+            let cof11 = c00 * c22 - c02 * c02;
+            let cof12 = c01 * c02 - c00 * c12;
+            let cof22 = c00 * c11 - c01 * c01;
+
+            let det = c00 * cof00 + c01 * cof01 + c02 * cof02;
+            let (ar, ag, ab) = if det > 1e-12 {
+                let inv_det = 1.0 / det;
+                (
+                    (cof00 * crp + cof01 * cgp + cof02 * cbp) * inv_det,
+                    (cof01 * crp + cof11 * cgp + cof12 * cbp) * inv_det,
+                    (cof02 * crp + cof12 * cgp + cof22 * cbp) * inv_det,
+                )
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+
+            self.cov_rp[i] = ar;
+            self.cov_gp[i] = ag;
+            self.cov_bp[i] = ab;
+            self.mean_p[i] = mp - (ar * mr + ag * mg + ab * mb);
+        }
+
+        // Pass 2: average (a_r, a_g, a_b, b) into var_rr, var_rg, var_rb, var_gg for output rows y0..y1
+        let out_win = BandWindow {
+            width,
+            total_height: height,
+            radius,
+            src_y_offset: top_a,
+            src_rows: mid_rows,
+            out_start: y0,
+            out_end: y1,
+            n_inv,
+        };
+        box_filter_mean_band(&self.cov_rp, &mut self.scratch, &mut self.var_rr, out_win);
+        box_filter_mean_band(&self.cov_gp, &mut self.scratch, &mut self.var_rg, out_win);
+        box_filter_mean_band(&self.cov_bp, &mut self.scratch, &mut self.var_rb, out_win);
+        box_filter_mean_band(&self.mean_p, &mut self.scratch, &mut self.var_gg, out_win);
+        let _ = out_len;
+    }
+}
+
+/// Refines a mask using 3-channel RGB Color Guided Filter with transition haze suppression.
 ///
-/// Solid foreground ($\ge 0.95$) and definite background ($\le 0.05$) remain sharp, while
-/// boundary pixels receive edge-preserving filter alignment.
+/// Solid foreground ($\ge 0.95$) and definite background ($\le 0.06$) remain sharp, while
+/// boundary pixels receive RGB edge-preserving alignment that distinguishes chromatic edges
+/// even when foreground and background share similar luminance.
 #[must_use]
 pub fn refine_mask_guided(
     raw_mask: GrayImage,
     orig: &DynamicImage,
     config: &RefineConfig,
+) -> GrayImage {
+    refine_mask_guided_banded(raw_mask, orig, config, GUIDED_BAND_HEIGHT)
+}
+
+fn refine_mask_guided_banded(
+    raw_mask: GrayImage,
+    orig: &DynamicImage,
+    config: &RefineConfig,
+    band_height: usize,
 ) -> GrayImage {
     if !config.enable_guided_filter {
         return raw_mask;
@@ -438,10 +663,10 @@ pub fn refine_mask_guided(
     let w = width as usize;
     let h = height as usize;
     let radius = config.radius;
-    let band_h = GUIDED_BAND_HEIGHT.min(h);
+    let band_h = band_height.max(1).min(h);
     let max_mid_rows = band_h + 2 * radius;
     let max_in_rows = band_h + 4 * radius;
-    let mut bufs = BandBuffers::new(w, max_in_rows, max_mid_rows);
+    let mut bufs = ColorBandBuffers::new(w, max_in_rows, max_mid_rows);
 
     let mut refined = GrayImage::new(width, height);
     let mask_raw = raw_mask.as_raw();
@@ -457,30 +682,49 @@ pub fn refine_mask_guided(
 
         let in_rows = bot_in - top_in;
         let in_len = w * in_rows;
+        let start_px = top_in * w;
 
-        // Populate guidance luminance and normalized mask directly into band buffers (zero full-frame copies)
+        // Skip expensive guided math if every pixel in the extended band is solidly background or foreground.
+        let mut all_bg = true;
+        let mut all_fg = true;
+        for &m in &mask_raw[start_px..start_px + in_len] {
+            if m > 15 {
+                all_bg = false;
+            }
+            if m < 243 {
+                all_fg = false;
+            }
+            if !all_bg && !all_fg {
+                break;
+            }
+        }
+        if all_bg || all_fg {
+            let out_len = (y1 - y0) * w;
+            let dst_off = y0 * w;
+            let fill = if all_fg { 255u8 } else { 0u8 };
+            refined_raw[dst_off..dst_off + out_len].fill(fill);
+            y0 = y1;
+            continue;
+        }
+
         match orig {
             DynamicImage::ImageRgb8(rgb) => {
                 let rgb_raw = rgb.as_raw();
-                let start_px = top_in * w;
                 for i in 0..in_len {
                     let base = (start_px + i) * 3;
-                    let r = rgb_raw[base] as f32;
-                    let g = rgb_raw[base + 1] as f32;
-                    let b = rgb_raw[base + 2] as f32;
-                    bufs.guidance[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                    bufs.r[i] = rgb_raw[base] as f32 / 255.0;
+                    bufs.g[i] = rgb_raw[base + 1] as f32 / 255.0;
+                    bufs.b[i] = rgb_raw[base + 2] as f32 / 255.0;
                     bufs.p[i] = mask_raw[start_px + i] as f32 / 255.0;
                 }
             }
             DynamicImage::ImageRgba8(rgba) => {
                 let rgba_raw = rgba.as_raw();
-                let start_px = top_in * w;
                 for i in 0..in_len {
                     let base = (start_px + i) * 4;
-                    let r = rgba_raw[base] as f32;
-                    let g = rgba_raw[base + 1] as f32;
-                    let b = rgba_raw[base + 2] as f32;
-                    bufs.guidance[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                    bufs.r[i] = rgba_raw[base] as f32 / 255.0;
+                    bufs.g[i] = rgba_raw[base + 1] as f32 / 255.0;
+                    bufs.b[i] = rgba_raw[base + 2] as f32 / 255.0;
                     bufs.p[i] = mask_raw[start_px + i] as f32 / 255.0;
                 }
             }
@@ -491,9 +735,9 @@ pub fn refine_mask_guided(
                     let mask_off = (top_in + dy) * w;
                     for x in 0..w {
                         let px = orig.get_pixel(x as u32, gy);
-                        bufs.guidance[row_off + x] =
-                            (0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32)
-                                / 255.0;
+                        bufs.r[row_off + x] = px[0] as f32 / 255.0;
+                        bufs.g[row_off + x] = px[1] as f32 / 255.0;
+                        bufs.b[row_off + x] = px[2] as f32 / 255.0;
                         bufs.p[row_off + x] = mask_raw[mask_off + x] as f32 / 255.0;
                     }
                 }
@@ -510,14 +754,24 @@ pub fn refine_mask_guided(
 
         for i in 0..out_len {
             let p_val = bufs.p[g_off + i];
-            let q_val =
-                (bufs.mean_a[i] * bufs.guidance[g_off + i] + bufs.mean_b[i]).clamp(0.0, 1.0);
-            let final_alpha = if p_val <= 0.05 {
+            let final_alpha = if p_val <= 0.06 {
                 0.0f32
             } else if p_val >= 0.95 {
                 1.0f32
             } else {
-                q_val
+                let q_val = (bufs.var_rr[i] * bufs.r[g_off + i]
+                    + bufs.var_rg[i] * bufs.g[g_off + i]
+                    + bufs.var_rb[i] * bufs.b[g_off + i]
+                    + bufs.var_gg[i])
+                    .clamp(0.0, 1.0);
+                // Suppress faint low-confidence smear haze while leaving true guided hair strands intact.
+                if q_val <= 0.06 {
+                    0.0
+                } else if q_val < 0.14 {
+                    q_val * ((q_val - 0.06) / 0.08)
+                } else {
+                    q_val
+                }
             };
             refined_raw[dst_off + i] = (final_alpha * 255.0).round().clamp(0.0, 255.0) as u8;
         }
@@ -528,8 +782,8 @@ pub fn refine_mask_guided(
     refined
 }
 
-/// Blends the original color channels with the alpha mask, applying optional defringing
-/// to decontaminate background color bleed on semi-transparent edge pixels.
+/// Blends the original color channels with the alpha mask, applying banded multi-pass
+/// boundary color decontamination to eliminate background bleed halos on edge pixels.
 #[must_use]
 pub fn apply_mask_with_refinement(
     orig: &DynamicImage,
@@ -541,6 +795,7 @@ pub fn apply_mask_with_refinement(
     let mask_raw = mask.as_raw();
     let cutout_raw = cutout.as_mut();
     let w_usize = w as usize;
+    let h_usize = h as usize;
 
     if !enable_defringing {
         for y in 0..h {
@@ -557,77 +812,157 @@ pub fn apply_mask_with_refinement(
         return cutout;
     }
 
-    let r_search: isize = 2; // 5x5 neighborhood search for solid foreground
+    if w_usize == 0 || h_usize == 0 {
+        return cutout;
+    }
 
-    for y in 0..h {
-        for x in 0..w {
-            let idx = (y as usize) * w_usize + (x as usize);
-            let alpha = mask_raw[idx];
-            let base = idx * 4;
+    const SOLID_ALPHA_MIN: u8 = 235;
+    const DEFRINGE_PASSES: usize = 6;
+    let band_h = GUIDED_BAND_HEIGHT.min(h_usize);
+    let max_rows = band_h + 2 * DEFRINGE_PASSES;
+    let cap = w_usize * max_rows;
 
-            if alpha == 0 {
-                cutout_raw[base] = 0;
-                cutout_raw[base + 1] = 0;
-                cutout_raw[base + 2] = 0;
-                cutout_raw[base + 3] = 0;
-                continue;
+    let mut fg_r = vec![0u8; cap];
+    let mut fg_g = vec![0u8; cap];
+    let mut fg_b = vec![0u8; cap];
+    let mut has_fg = vec![0u8; cap];
+    let mut next_r = vec![0u8; cap];
+    let mut next_g = vec![0u8; cap];
+    let mut next_b = vec![0u8; cap];
+    let mut next_has = vec![0u8; cap];
+
+    let mut y0 = 0usize;
+    while y0 < h_usize {
+        let y1 = (y0 + band_h).min(h_usize);
+        let top = y0.saturating_sub(DEFRINGE_PASSES);
+        let bot = (y1 + DEFRINGE_PASSES).min(h_usize);
+        let rows = bot - top;
+        let len = rows * w_usize;
+
+        for by in 0..rows {
+            let gy = (top + by) as u32;
+            let row_off = by * w_usize;
+            let global_row = (top + by) * w_usize;
+            for x in 0..w_usize {
+                let idx = row_off + x;
+                let a = mask_raw[global_row + x];
+                if a >= SOLID_ALPHA_MIN {
+                    let [r, g, b] = read_pixel_rgb(orig, x as u32, gy);
+                    fg_r[idx] = r;
+                    fg_g[idx] = g;
+                    fg_b[idx] = b;
+                    has_fg[idx] = 1;
+                } else {
+                    has_fg[idx] = 0;
+                }
             }
+        }
 
-            let [mut r_out, mut g_out, mut b_out] = read_pixel_rgb(orig, x, y);
+        // Propagate nearest solid foreground color outward up to DEFRINGE_PASSES pixels.
+        for _ in 0..DEFRINGE_PASSES {
+            next_r[..len].copy_from_slice(&fg_r[..len]);
+            next_g[..len].copy_from_slice(&fg_g[..len]);
+            next_b[..len].copy_from_slice(&fg_b[..len]);
+            next_has[..len].copy_from_slice(&has_fg[..len]);
+            let mut changed = false;
 
-            // Semi-transparent boundary pixel: search for solid foreground neighbor (alpha >= 235)
-            if alpha < 235 {
-                let mut sum_r = 0.0f32;
-                let mut sum_g = 0.0f32;
-                let mut sum_b = 0.0f32;
-                let mut fg_count = 0.0f32;
-
-                for dy in -r_search..=r_search {
-                    let ny = y as isize + dy;
-                    if ny < 0 || ny >= h as isize {
+            for by in 0..rows {
+                let row_off = by * w_usize;
+                let global_row = (top + by) * w_usize;
+                for x in 0..w_usize {
+                    let idx = row_off + x;
+                    let a = mask_raw[global_row + x];
+                    if a == 0 || has_fg[idx] != 0 {
                         continue;
                     }
 
-                    for dx in -r_search..=r_search {
-                        let nx = x as isize + dx;
-                        if nx < 0 || nx >= w as isize {
-                            continue;
-                        }
+                    let mut sr = 0u32;
+                    let mut sg = 0u32;
+                    let mut sb = 0u32;
+                    let mut count = 0u32;
 
-                        let n_alpha = mask_raw[(ny as usize) * w_usize + (nx as usize)];
-                        if n_alpha >= 235 {
-                            let [nr, ng, nb] = read_pixel_rgb(orig, nx as u32, ny as u32);
-                            sum_r += nr as f32;
-                            sum_g += ng as f32;
-                            sum_b += nb as f32;
-                            fg_count += 1.0;
+                    let y_min = by.saturating_sub(1);
+                    let y_max = (by + 1).min(rows - 1);
+                    let x_min = x.saturating_sub(1);
+                    let x_max = (x + 1).min(w_usize - 1);
+                    for ny in y_min..=y_max {
+                        let n_off = ny * w_usize;
+                        for nx in x_min..=x_max {
+                            let n_idx = n_off + nx;
+                            if has_fg[n_idx] != 0 {
+                                sr += fg_r[n_idx] as u32;
+                                sg += fg_g[n_idx] as u32;
+                                sb += fg_b[n_idx] as u32;
+                                count += 1;
+                            }
                         }
                     }
-                }
 
-                if fg_count > 0.0 {
-                    let avg_r = sum_r / fg_count;
-                    let avg_g = sum_g / fg_count;
-                    let avg_b = sum_b / fg_count;
-
-                    let blend_fg = 1.0 - (alpha as f32 / 255.0);
-                    r_out = ((r_out as f32) * (1.0 - blend_fg) + avg_r * blend_fg)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
-                    g_out = ((g_out as f32) * (1.0 - blend_fg) + avg_g * blend_fg)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
-                    b_out = ((b_out as f32) * (1.0 - blend_fg) + avg_b * blend_fg)
-                        .round()
-                        .clamp(0.0, 255.0) as u8;
+                    let half = count / 2;
+                    if let (Some(r), Some(g), Some(b)) = (
+                        (sr + half).checked_div(count),
+                        (sg + half).checked_div(count),
+                        (sb + half).checked_div(count),
+                    ) {
+                        next_r[idx] = r as u8;
+                        next_g[idx] = g as u8;
+                        next_b[idx] = b as u8;
+                        next_has[idx] = 1;
+                        changed = true;
+                    }
                 }
             }
 
-            cutout_raw[base] = r_out;
-            cutout_raw[base + 1] = g_out;
-            cutout_raw[base + 2] = b_out;
-            cutout_raw[base + 3] = alpha;
+            fg_r[..len].copy_from_slice(&next_r[..len]);
+            fg_g[..len].copy_from_slice(&next_g[..len]);
+            fg_b[..len].copy_from_slice(&next_b[..len]);
+            has_fg[..len].copy_from_slice(&next_has[..len]);
+            if !changed {
+                break;
+            }
         }
+
+        for gy in y0..y1 {
+            let by = gy - top;
+            let band_row = by * w_usize;
+            let global_row = gy * w_usize;
+            for x in 0..w_usize {
+                let g_idx = global_row + x;
+                let b_idx = band_row + x;
+                let alpha = mask_raw[g_idx];
+                let base = g_idx * 4;
+
+                if alpha == 0 {
+                    cutout_raw[base] = 0;
+                    cutout_raw[base + 1] = 0;
+                    cutout_raw[base + 2] = 0;
+                    cutout_raw[base + 3] = 0;
+                    continue;
+                }
+
+                let [mut r_out, mut g_out, mut b_out] = read_pixel_rgb(orig, x as u32, gy as u32);
+                if alpha < SOLID_ALPHA_MIN && has_fg[b_idx] != 0 {
+                    // Replace contaminated edge color strongly on low/mid alpha so old background bleed disappears.
+                    let w_fg = ((SOLID_ALPHA_MIN as f32 - alpha as f32) / 75.0).clamp(0.0, 1.0);
+                    r_out = ((r_out as f32) * (1.0 - w_fg) + (fg_r[b_idx] as f32) * w_fg)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    g_out = ((g_out as f32) * (1.0 - w_fg) + (fg_g[b_idx] as f32) * w_fg)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    b_out = ((b_out as f32) * (1.0 - w_fg) + (fg_b[b_idx] as f32) * w_fg)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                }
+
+                cutout_raw[base] = r_out;
+                cutout_raw[base + 1] = g_out;
+                cutout_raw[base + 2] = b_out;
+                cutout_raw[base + 3] = alpha;
+            }
+        }
+
+        y0 = y1;
     }
 
     cutout
@@ -786,5 +1121,178 @@ mod tests {
         assert_eq!(edge_px[3], 100);
         assert!(edge_px[0] > 80);
         assert!(edge_px[1] < 180);
+    }
+
+    #[test]
+    fn test_color_guided_filter_preserves_isoluminant_chroma_edge() {
+        use image::{Rgb, RgbImage};
+        // Foreground (right) and background (left) have virtually identical luminance (~170)
+        // but differ sharply in RGB chroma (yellowish vs cool purple-blue).
+        let w = 24u32;
+        let h = 24u32;
+        let mut rgb = RgbImage::new(w, h);
+        let mut mask = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                if x < 12 {
+                    rgb.put_pixel(x, y, Rgb([200, 180, 40]));
+                    mask.put_pixel(x, y, image::Luma([if x >= 10 { 80 } else { 0 }]));
+                } else {
+                    rgb.put_pixel(x, y, Rgb([148, 180, 210]));
+                    mask.put_pixel(x, y, image::Luma([if x <= 13 { 180 } else { 255 }]));
+                }
+            }
+        }
+
+        let dyn_orig = DynamicImage::ImageRgb8(rgb);
+        let refined = refine_mask_guided(mask, &dyn_orig, &RefineConfig::default());
+
+        assert!(refined.get_pixel(9, 12)[0] < 30);
+        assert!(refined.get_pixel(14, 12)[0] > 220);
+        assert!(refined.get_pixel(11, 12)[0] < refined.get_pixel(12, 12)[0]);
+    }
+
+    #[test]
+    fn test_defringing_reaches_outer_edge_pixels_across_band() {
+        use image::Rgba;
+        // Solid foreground at x=0..=1, contaminated yellow transition at x=2..=5 (up to 4px out).
+        let w = 8u32;
+        let h = (GUIDED_BAND_HEIGHT + 4) as u32;
+        let mut orig = RgbaImage::new(w, h);
+        let mut mask = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                if x <= 1 {
+                    orig.put_pixel(x, y, Rgba([120, 60, 40, 255]));
+                    mask.put_pixel(x, y, image::Luma([255]));
+                } else if x <= 5 {
+                    orig.put_pixel(x, y, Rgba([230, 220, 20, 255]));
+                    let a = (200 - (x - 2) * 40) as u8;
+                    mask.put_pixel(x, y, image::Luma([a]));
+                } else {
+                    orig.put_pixel(x, y, Rgba([240, 230, 10, 255]));
+                    mask.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        }
+
+        let dyn_orig = DynamicImage::ImageRgba8(orig);
+        let result = apply_mask_with_refinement(&dyn_orig, &mask, true);
+
+        // Even 4 pixels from the solid foreground (x=5, alpha=80), yellow bleed should be replaced.
+        let far_edge = result.get_pixel(5, GUIDED_BAND_HEIGHT as u32);
+        assert_eq!(far_edge[3], 80);
+        assert!(
+            far_edge[1] < 100,
+            "Expected green channel defringed, got {:?}",
+            far_edge
+        );
+        assert!(
+            far_edge[0] < 160,
+            "Expected red channel defringed, got {:?}",
+            far_edge
+        );
+        assert_eq!(result.get_pixel(6, 0), &Rgba([0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn test_color_guided_filter_multi_band_no_seam() {
+        use image::{Rgb, RgbImage};
+        let w = 32u32;
+        let h = (GUIDED_BAND_HEIGHT * 2 + 19) as u32;
+        let mut rgb = RgbImage::new(w, h);
+        let mut mask = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                if x < 16 {
+                    rgb.put_pixel(x, y, Rgb([200, 180, 40]));
+                    mask.put_pixel(x, y, image::Luma([if x >= 14 { 80 } else { 0 }]));
+                } else {
+                    rgb.put_pixel(x, y, Rgb([148, 180, 210]));
+                    mask.put_pixel(x, y, image::Luma([if x <= 17 { 180 } else { 255 }]));
+                }
+            }
+        }
+
+        let dyn_orig = DynamicImage::ImageRgb8(rgb);
+        let refined = refine_mask_guided(mask, &dyn_orig, &RefineConfig::default());
+
+        for x in 0..w {
+            let ref_px = refined.get_pixel(x, 64)[0];
+            for y in [
+                (GUIDED_BAND_HEIGHT - 1) as u32,
+                GUIDED_BAND_HEIGHT as u32,
+                (GUIDED_BAND_HEIGHT + 1) as u32,
+                (GUIDED_BAND_HEIGHT * 2 - 1) as u32,
+                (GUIDED_BAND_HEIGHT * 2) as u32,
+                (GUIDED_BAND_HEIGHT * 2 + 1) as u32,
+            ] {
+                assert_eq!(
+                    refined.get_pixel(x, y)[0],
+                    ref_px,
+                    "Band seam detected at x={x}, y={y}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_color_guided_filter_early_exit_threshold_matches_float_boundary() {
+        use image::{Rgb, RgbImage};
+        // 242/255 = 0.9490 < 0.95, so an image filled with 242 must not skip to 255 unless >= 243.
+        let w = 16u32;
+        let h = 16u32;
+        let rgb = RgbImage::from_pixel(w, h, Rgb([120, 120, 120]));
+        let mask_242 = GrayImage::from_pixel(w, h, image::Luma([242]));
+        let mask_243 = GrayImage::from_pixel(w, h, image::Luma([243]));
+        let dyn_orig = DynamicImage::ImageRgb8(rgb);
+
+        let out_242 = refine_mask_guided(mask_242, &dyn_orig, &RefineConfig::default());
+        let out_243 = refine_mask_guided(mask_243, &dyn_orig, &RefineConfig::default());
+
+        assert_eq!(out_242.get_pixel(8, 8)[0], 242);
+        assert_eq!(out_243.get_pixel(8, 8)[0], 255);
+    }
+
+    #[test]
+    fn test_color_guided_filter_multi_band_matches_full_frame() {
+        use image::{Rgb, RgbImage};
+        let w = 64u32;
+        let h = (GUIDED_BAND_HEIGHT * 3 + 37) as u32;
+        let mut rgb = RgbImage::new(w, h);
+        let mut mask = GrayImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let r = ((x * 17 + y * 31) % 256) as u8;
+                let g = ((x * 41 + y * 13 + 70) % 256) as u8;
+                let b = ((x * 23 + y * 53 + 140) % 256) as u8;
+                rgb.put_pixel(x, y, Rgb([r, g, b]));
+                let m = if x + (y / 8) > 45 {
+                    245u8
+                } else if x + (y / 8) > 35 {
+                    ((x + y / 8 - 35) * 20 + 20) as u8
+                } else {
+                    10u8
+                };
+                mask.put_pixel(x, y, image::Luma([m]));
+            }
+        }
+        let dyn_orig = DynamicImage::ImageRgb8(rgb);
+        let banded = refine_mask_guided_banded(
+            mask.clone(),
+            &dyn_orig,
+            &RefineConfig::default(),
+            GUIDED_BAND_HEIGHT,
+        );
+        let full = refine_mask_guided_banded(mask, &dyn_orig, &RefineConfig::default(), h as usize);
+
+        let mut max_diff = 0i32;
+        for y in 0..h {
+            for x in 0..w {
+                let d = (banded.get_pixel(x, y)[0] as i32 - full.get_pixel(x, y)[0] as i32).abs();
+                max_diff = max_diff.max(d);
+            }
+        }
+        assert!(max_diff <= 1, "Banded vs full-frame max diff={max_diff}");
     }
 }

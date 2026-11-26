@@ -35,6 +35,9 @@ export interface QueueItem {
   width?: number;
   height?: number;
   device?: string;
+  processedTier?: "quality" | "fast";
+  processedRefine?: "none" | "light" | "standard";
+  processedMaxSide?: number | null;
 }
 
 export interface RejectedItem {
@@ -72,6 +75,9 @@ export interface ProgressPayload {
   width: number;
   height: number;
   device: string;
+  tier?: string;
+  refine_level?: string;
+  max_side?: number | null;
 }
 
 export interface FinishedPayload {
@@ -177,9 +183,20 @@ export function startJob(state: QueueState, loadingModelFirst: boolean): QueueSt
     items: state.items.map((item) => ({
       ...item,
       status: "waiting",
+      timingMs: undefined,
+      inferenceMs: undefined,
       warnings: [],
       oomWarning: false,
       error: undefined,
+      originalPreviewPath: undefined,
+      cutoutPreviewPath: undefined,
+      fullCutoutPath: undefined,
+      width: undefined,
+      height: undefined,
+      device: undefined,
+      processedTier: undefined,
+      processedRefine: undefined,
+      processedMaxSide: undefined,
     })),
   };
 }
@@ -189,6 +206,19 @@ export function setJobPhase(
   phase: "loading_model" | "processing"
 ): QueueState {
   return { ...state, phase };
+}
+
+function normalizeProcessedTier(raw?: string): "quality" | "fast" | undefined {
+  if (raw === "fast") return "fast";
+  if (raw === "quality") return "quality";
+  return undefined;
+}
+
+function normalizeProcessedRefine(
+  raw?: string
+): "none" | "light" | "standard" | undefined {
+  if (raw === "none" || raw === "light" || raw === "standard") return raw;
+  return undefined;
 }
 
 export function applyProgressEvent(
@@ -215,12 +245,16 @@ export function applyProgressEvent(
       warnings: payload.warnings ?? [],
       oomWarning: Boolean(payload.oom_warning),
       error: payload.error ?? undefined,
-      originalPreviewPath: payload.original_preview_path ?? item.originalPreviewPath,
-      cutoutPreviewPath: payload.cutout_preview_path ?? item.cutoutPreviewPath,
-      fullCutoutPath: payload.full_cutout_path ?? item.fullCutoutPath,
-      width: payload.width || item.width,
-      height: payload.height || item.height,
-      device: payload.device || item.device,
+      originalPreviewPath: payload.original_preview_path ?? undefined,
+      cutoutPreviewPath: payload.cutout_preview_path ?? undefined,
+      fullCutoutPath: payload.full_cutout_path ?? undefined,
+      width: payload.width || undefined,
+      height: payload.height || undefined,
+      device: payload.device || undefined,
+      processedTier: normalizeProcessedTier(payload.tier),
+      processedRefine: normalizeProcessedRefine(payload.refine_level),
+      processedMaxSide:
+        payload.max_side === undefined ? undefined : payload.max_side,
     };
   });
 
@@ -320,4 +354,30 @@ export function summarizeQueue(state: QueueState) {
     saveable,
     oomWarnings,
   };
+}
+
+export function hasStaleProcessedItems(
+  state: QueueState,
+  currentTier: "quality" | "fast",
+  currentRefine: "none" | "light" | "standard",
+  currentMaxSide: number | null
+): boolean {
+  return state.items.some((item) => {
+    if ((item.status !== "done" && item.status !== "warning") || !item.fullCutoutPath) {
+      return false;
+    }
+    if (item.processedTier !== undefined && item.processedTier !== currentTier) {
+      return true;
+    }
+    if (item.processedRefine !== undefined && item.processedRefine !== currentRefine) {
+      return true;
+    }
+    if (
+      item.processedMaxSide !== undefined &&
+      item.processedMaxSide !== currentMaxSide
+    ) {
+      return true;
+    }
+    return false;
+  });
 }

@@ -129,6 +129,9 @@ pub struct JobProgressEvent {
     pub width: u32,
     pub height: u32,
     pub device: String,
+    pub tier: String,
+    pub refine_level: String,
+    pub max_side: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -532,6 +535,17 @@ mod commands {
         let tier = parse_tier(&options.tier);
         let ep = parse_device(&options.device);
         let refine_level = RefineLevel::parse(&options.refine_level);
+        let tier_str = match tier {
+            ModelTier::Fast => "fast",
+            ModelTier::Quality => "quality",
+        }
+        .to_string();
+        let refine_str = match refine_level {
+            RefineLevel::None => "none",
+            RefineLevel::Light => "light",
+            RefineLevel::Standard => "standard",
+        }
+        .to_string();
         let max_side = options.max_side;
         let bg_hex = options.background_hex.clone();
         let app_clone = app.clone();
@@ -629,6 +643,9 @@ mod commands {
                                     width: 0,
                                     height: 0,
                                     device: String::new(),
+                                    tier: tier_str.clone(),
+                                    refine_level: refine_str.clone(),
+                                    max_side,
                                 },
                             );
                             continue;
@@ -728,6 +745,9 @@ mod commands {
                                         width,
                                         height,
                                         device: active_device,
+                                        tier: tier_str.clone(),
+                                        refine_level: refine_str.clone(),
+                                        max_side,
                                     },
                                 );
                             }
@@ -753,6 +773,9 @@ mod commands {
                                         width: 0,
                                         height: 0,
                                         device: active_device,
+                                        tier: tier_str.clone(),
+                                        refine_level: refine_str.clone(),
+                                        max_side,
                                     },
                                 );
                             }
@@ -780,6 +803,9 @@ mod commands {
                                 width: 0,
                                 height: 0,
                                 device: String::new(),
+                                tier: tier_str.clone(),
+                                refine_level: refine_str.clone(),
+                                max_side,
                             },
                         );
                     }
