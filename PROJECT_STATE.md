@@ -1,30 +1,35 @@
 # RustMatte Project State
 
 ## Current Phase
-Release v1.0.0 Prepared — bumped version to 1.0.0 across Cargo workspace and npm package, updated CHANGELOG.md and README.md, preparing tagged draft release.
+v1.0.0 Published to Public Release — official v1.0.0 release published on GitHub with multi-OS installers (Windows NSIS setup, macOS DMG, Linux AppImage/deb, and CLI binaries); ready to start v1.1 scope (Phase 6).
 
 ## Last Session Summary
-- Bumped version to `1.0.0` in `Cargo.toml`, `Cargo.lock`, `crates/app/package.json`, and `crates/app/package-lock.json`.
-- Added `[1.0.0] - 2026-11-26` release section in `CHANGELOG.md` documenting mandatory setup wizard, model management, per-photo retry, and visual design tokens.
-- Updated `README.md` status to `v1.0.0`.
-- Verified npm license check, node tests, svelte-check, vite build, and rust compilation.
+- Bumped workspace and app to `1.0.0`, verified full quality gate, and pushed commit `3bafc9d` to `origin/main`.
+- Tagged `v1.0.0` and pushed to GitHub; GitHub Actions workflow `45756623551` successfully built Windows, macOS, and Linux installers and CLI archives.
+- Published release `v1.0.0` publicly at https://github.com/yehudaaadev/RustMatte/releases/tag/v1.0.0.
 
 ## Done
-- Phase 0 through Phase 4 + Pre-Release Fixes + UI Polish + Pre-Push Final Fixes (`D-028`..`D-031`) + `models-v1` release + `v0.1.0-rc4` multi-OS CI/Release verification + `D-032` refinement/UI tracking + `PRD_V2.md` adoption & **Phase 5.0** (`D-033`..`D-034`) + **Phase 5A** (`D-035`) + **Phase 5B** (`D-036`) + **Phase 5C** (`D-037`) + **Phase 5D** (`D-038`).
-- Phase 5D local commits pushed to `origin/main`.
-- Bumped workspace and app to `1.0.0`.
+- **v1.0.0 Officially Released**:
+  - Full end-to-end background removal engine with offline ONNX Runtime CPU inference.
+  - Two verified tiers: Fast (`U-2-Netp`, 4.36 MB) and Balanced (`BiRefNet Lite 512`, 183 MB).
+  - Banded RGB Color Guided Filter and 6-pass wavefront defringing bounding 24 MP peak memory to ~2.19 GB / ~499 MB.
+  - Resumable HTTP Range downloader with SHA-256 verification and atomic rename.
+  - Mandatory 5-step guided setup wizard with RAM detection and questionnaire recommendation.
+  - Dedicated Settings modal with model cache management and per-photo model retry comparison.
+  - Visual design tokens strictly tuned for WCAG AA (>= 4.5:1) contrast in Light and Dark themes.
+  - Bilingual English and Indonesian interface with 100% dictionary synchronization.
+  - Multi-OS GitHub Release published (`RustMatte_1.0.0_x64-setup.exe`, `.dmg`, `.AppImage`, `.deb`, CLI archives).
 
 ## In Progress
-- Release `v1.0.0` quality gate and tagged release trigger.
-
-## Known Broken or Failing
-- None in automated test suite or build pipeline.
+- Transitioning to **v1.1 Scope** (`PRD_V2.md` §16 / `docs/TASKS.md` Phase 6):
+  1. Camera RAW decoding support (`.CR2`, `.NEF`, `.ARW`, `.DNG`).
+  2. Apple iPhone HEIC/HEIF decoding support.
+  3. Model AI ke-3: **BEN2 (Maximum Quality)** with GPU DirectML/CoreML acceleration.
 
 ## Next Step
-1. Run pre-release quality gate (`npm license-check`, `npm test`, `svelte-check`, `vite build`, `cargo fmt`, `cargo clippy`, `cargo test --release`, `cargo deny`).
-2. Commit `chore: bump version to 1.0.0 for v1.0.0 release` and push to `main`.
-3. Create git tag `v1.0.0` and push to trigger `.github/workflows/release.yml`.
-4. Monitor multi-OS cloud build producing `RustMatte_1.0.0_x64-setup.exe` and release archives.
+Owner decides priority for v1.1 kickoff:
+1. RAW/HEIF image decoding codecs in `crates/core`, or
+2. GPU DirectML / CoreML hardware acceleration & BEN2 model integration.
 
 ## Last Updated
 2026-11-26
