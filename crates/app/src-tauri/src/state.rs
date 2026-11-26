@@ -173,9 +173,44 @@ impl JobCoordinator {
     }
 }
 
+/// Coordinates single active model download and cancellation requests.
+#[derive(Debug, Default)]
+pub struct DownloadCoordinator {
+    active: Option<(String, Arc<AtomicBool>)>,
+}
+
+impl DownloadCoordinator {
+    pub fn try_start(&mut self, tier: &str) -> Result<Arc<AtomicBool>, String> {
+        if self.active.is_some() {
+            return Err("A model download is already in progress".to_string());
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        self.active = Some((tier.to_string(), Arc::clone(&flag)));
+        Ok(flag)
+    }
+
+    pub fn request_cancel(&self) -> bool {
+        if let Some((_, ref flag)) = self.active {
+            flag.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn finish(&mut self, tier: &str) {
+        if let Some((ref active_tier, _)) = self.active {
+            if active_tier == tier {
+                self.active = None;
+            }
+        }
+    }
+}
+
 pub struct AppState {
     pub session_cache: Mutex<SessionCache>,
     pub job_coordinator: Mutex<JobCoordinator>,
+    pub download_coordinator: Mutex<DownloadCoordinator>,
 }
 
 impl AppState {
@@ -184,6 +219,7 @@ impl AppState {
         Self {
             session_cache: Mutex::new(SessionCache::new()),
             job_coordinator: Mutex::new(JobCoordinator::new()),
+            download_coordinator: Mutex::new(DownloadCoordinator::default()),
         }
     }
 }

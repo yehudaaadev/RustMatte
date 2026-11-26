@@ -6,6 +6,8 @@
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { dictionaries, type Lang } from "$lib/i18n";
   import { mapTechnicalError, type FriendlyError } from "$lib/errors";
+  import SetupWizard from "$lib/SetupWizard.svelte";
+  import type { ManifestModelInfo } from "$lib/wizard";
   import {
     formatDisplayPath,
     renderRejectedReason,
@@ -75,6 +77,8 @@
   let backgroundHex = $state("#ffffff");
   let outputFolder = $state<string | null>(null);
   let neverUseNetwork = $state(false);
+  let wizardCompleted = $state(false);
+  let wizardVersion = $state(0);
   let settingsLoaded = $state(false);
 
   let t = $derived(dictionaries[lang]);
@@ -85,15 +89,13 @@
   // Model & setup state
   let qualityModel = $state<ModelTierInfo | null>(null);
   let fastModel = $state<ModelTierInfo | null>(null);
-  let showFirstRunModal = $state(false);
-  let setupTier = $state<"quality" | "fast">("quality");
+  let manifestModels = $state<ManifestModelInfo[]>([]);
+  let showSetupWizard = $state(false);
   let downloadError = $state<FriendlyError | null>(null);
+  let downloadPaused = $state(false);
 
   let activeModelInfo = $derived(
     selectedTier === "fast" ? fastModel : qualityModel
-  );
-  let setupModelInfo = $derived(
-    setupTier === "fast" ? fastModel : qualityModel
   );
   let isActiveModelReady = $derived(activeModelInfo?.cached ?? false);
 
@@ -197,6 +199,8 @@
         backgroundHex = saved.background_hex || "#ffffff";
         outputFolder = saved.output_folder ?? null;
         neverUseNetwork = Boolean(saved.never_use_network);
+        wizardCompleted = Boolean(saved.wizard_completed);
+        wizardVersion = Number(saved.wizard_version ?? 0);
       }
     } catch (e) {
       activeError = mapTechnicalError(String(e), t);
@@ -205,8 +209,9 @@
     }
 
     await refreshModelStatus();
-    if (!isActiveModelReady) {
-      setupTier = selectedTier;
+    if (!wizardCompleted) {
+      showSetupWizard = true;
+    } else if (!isActiveModelReady) {
       qState = markModelMissing(qState);
     }
 
@@ -313,6 +318,8 @@
       background_mode: backgroundMode,
       background_hex: backgroundHex,
       never_use_network: neverUseNetwork,
+      wizard_completed: wizardCompleted,
+      wizard_version: wizardVersion,
     };
     invoke("set_settings", { newSettings: payload }).catch((e) => {
       console.error("Failed to save settings:", e);
@@ -321,9 +328,13 @@
 
   async function refreshModelStatus() {
     try {
-      const res: any = await invoke("get_models_status");
+      const [res, manifestRes] = await Promise.all([
+        invoke<any>("get_models_status"),
+        invoke<{ models: ManifestModelInfo[] }>("get_manifest_models"),
+      ]);
       qualityModel = res.quality;
       fastModel = res.fast;
+      manifestModels = manifestRes.models ?? [];
     } catch (e) {
       activeError = mapTechnicalError(String(e), t);
     }
@@ -387,23 +398,24 @@
     }
   }
 
-  function openModelSetup(tier: "quality" | "fast") {
-    setupTier = tier;
+  async function openModelSetup(_tier: "quality" | "fast") {
     downloadError = null;
-    showFirstRunModal = true;
+    downloadPaused = false;
+    await refreshModelStatus();
+    showSetupWizard = true;
   }
 
-  async function startDownloadFromModal() {
+  async function startDownloadFromWizard(tier: "quality" | "fast") {
     if (neverUseNetwork) {
       downloadError = mapTechnicalError("Never use the network", t);
       return;
     }
     downloadError = null;
+    downloadPaused = false;
     qState = startModelDownload(qState);
     try {
-      await invoke("download_model", { tier: setupTier, consent: true });
+      await invoke("download_model", { tier, consent: true });
       await refreshModelStatus();
-      showFirstRunModal = false;
       qState = {
         ...qState,
         phase: qState.items.length > 0 ? "done" : "empty",
@@ -411,11 +423,34 @@
     } catch (e) {
       const msg = String(e);
       qState = failModelDownload(qState, msg);
-      downloadError = mapTechnicalError(msg, t);
+      if (msg.toLowerCase().includes("cancelled")) {
+        downloadPaused = true;
+        await refreshModelStatus();
+      } else {
+        downloadError = mapTechnicalError(msg, t);
+      }
     }
   }
 
-  async function importLocalModelFile() {
+  async function cancelDownloadFromWizard() {
+    try {
+      await invoke("cancel_model_download");
+    } catch {
+      // Ignore if download already finished
+    }
+  }
+
+  async function deletePartialFromWizard(tier: "quality" | "fast") {
+    try {
+      await invoke("delete_partial_model_download", { tier });
+      downloadPaused = false;
+      await refreshModelStatus();
+    } catch (e) {
+      downloadError = mapTechnicalError(String(e), t);
+    }
+  }
+
+  async function importLocalModelFile(tier: "quality" | "fast") {
     const selected = await open({
       title: t.dialogImportModelTitle,
       multiple: false,
@@ -424,13 +459,13 @@
     });
     if (typeof selected !== "string" || !selected.trim()) return;
     downloadError = null;
+    downloadPaused = false;
     try {
       await invoke("import_model_file", {
-        tier: setupTier,
+        tier,
         filePath: selected,
       });
       await refreshModelStatus();
-      showFirstRunModal = false;
       qState = {
         ...qState,
         phase: qState.items.length > 0 ? "done" : "empty",
@@ -438,6 +473,16 @@
     } catch (e) {
       downloadError = mapTechnicalError(String(e), t);
     }
+  }
+
+  async function completeSetupWizard(chosenTier: "quality" | "fast") {
+    selectedTier = chosenTier;
+    wizardCompleted = true;
+    wizardVersion = 1;
+    showSetupWizard = false;
+    downloadError = null;
+    downloadPaused = false;
+    await refreshModelStatus();
   }
 
   async function runRemoveBackground() {
@@ -745,8 +790,8 @@
         showAboutModal = false;
         return;
       }
-      if (showFirstRunModal && !isDownloading) {
-        showFirstRunModal = false;
+      if (showSetupWizard && wizardCompleted && !isDownloading) {
+        showSetupWizard = false;
         return;
       }
       if (isBusy) {
@@ -755,7 +800,7 @@
       }
     }
 
-    if (showAboutModal || showFirstRunModal) return;
+    if (showAboutModal || showSetupWizard) return;
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
       e.preventDefault();
@@ -1252,86 +1297,26 @@
     {/if}
   </div>
 
-  <!-- First-Run Model Setup Dialog -->
-  {#if showFirstRunModal}
-    <div class="modal-backdrop" role="presentation">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
-        <h2 id="first-run-title">{t.firstRunTitle}</h2>
-        <p>{t.firstRunIntro}</p>
-
-        {#if setupModelInfo}
-          <dl class="meta-grid">
-            <dt>{t.firstRunFileLabel}</dt>
-            <dd>{setupModelInfo.filename}</dd>
-            <dt>{t.firstRunSizeLabel}</dt>
-            <dd>{setupModelInfo.expected_size_mb.toFixed(1)} MB</dd>
-            <dt>{t.firstRunHostLabel}</dt>
-            <dd>{setupModelInfo.primary_host} ({t.firstRunFallbackLabel}: {setupModelInfo.fallback_host})</dd>
-            <dt>{t.firstRunLicenseLabel}</dt>
-            <dd>{setupModelInfo.license}</dd>
-          </dl>
-        {/if}
-
-        {#if neverUseNetwork}
-          <p class="banner warning">{t.firstRunBlockedOffline}</p>
-        {/if}
-
-        {#if isDownloading}
-          <div class="download-progress">
-            <span>{t.progressDownloading} ({qState.downloadProgress}%)</span>
-            <progress max="100" value={qState.downloadProgress}></progress>
-          </div>
-        {/if}
-
-        {#if downloadError}
-          <div class="banner error" role="alert">
-            <div class="banner-body">
-              <strong>{downloadError.title}</strong>
-              <p>{downloadError.fix}</p>
-              <details>
-                <summary>{t.errorDetailsLabel}</summary>
-                <code>{downloadError.details}</code>
-              </details>
-            </div>
-          </div>
-        {/if}
-
-        <div class="modal-actions">
-          {#if downloadError}
-            <button
-              class="primary-btn"
-              onclick={startDownloadFromModal}
-              disabled={isDownloading || neverUseNetwork}
-            >
-              {t.firstRunRetryBtn}
-            </button>
-          {:else}
-            <button
-              class="primary-btn"
-              onclick={startDownloadFromModal}
-              disabled={isDownloading || neverUseNetwork}
-            >
-              {t.firstRunDownloadBtn}
-            </button>
-          {/if}
-          <button
-            class="secondary-btn"
-            onclick={importLocalModelFile}
-            disabled={isDownloading}
-          >
-            {t.firstRunImportBtn}
-          </button>
-          <button
-            class="text-btn"
-            onclick={() => (showFirstRunModal = false)}
-            disabled={isDownloading}
-          >
-            {t.firstRunCancelBtn}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <SetupWizard
+    open={showSetupWizard}
+    {lang}
+    {t}
+    {neverUseNetwork}
+    {manifestModels}
+    {isDownloading}
+    downloadProgress={qState.downloadProgress}
+    {downloadError}
+    {downloadPaused}
+    canDismiss={wizardCompleted}
+    onLanguageChange={(next) => (lang = next)}
+    onRefreshManifest={refreshModelStatus}
+    onDownload={startDownloadFromWizard}
+    onCancelDownload={cancelDownloadFromWizard}
+    onDeletePartial={deletePartialFromWizard}
+    onImportLocal={importLocalModelFile}
+    onComplete={completeSetupWizard}
+    onDismiss={() => (showSetupWizard = false)}
+  />
 
   <!-- About & Licenses Modal -->
   {#if showAboutModal}
@@ -2076,23 +2061,6 @@
   .modal h2 {
     margin: 0;
     font-size: 16px;
-  }
-
-  .meta-grid {
-    display: grid;
-    grid-template-columns: 120px 1fr;
-    gap: 6px 12px;
-    margin: 0;
-    font-size: 13px;
-  }
-
-  .meta-grid dt {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
-
-  .meta-grid dd {
-    margin: 0;
   }
 
   .modal-actions {

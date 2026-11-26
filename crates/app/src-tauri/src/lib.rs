@@ -28,8 +28,10 @@ use rustmatte_core::model::{
 };
 use rustmatte_core::pipeline::downscale_if_needed;
 use rustmatte_core::{
-    download_model as core_download_model, extract_source_host, ExecutionProvider, ModelTier,
-    Warning,
+    check_disk_space, delete_partial_download, detect_available_memory_mb, detect_memory_info,
+    download_model_with_options, extract_source_host, manifest_entries, partial_download_info,
+    recommend_model, DiskSpaceCheck, DownloadOptions, ExecutionProvider, ModelRecommendation,
+    ModelTier, PhotoSubject, UsageFrequency, Warning,
 };
 
 use crate::settings::AppSettings;
@@ -58,6 +60,45 @@ pub struct ModelsStatusResponse {
     pub quality: ModelTierStatus,
     pub fast: ModelTierStatus,
     pub cache_dir: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ManifestModelInfo {
+    pub id: String,
+    pub tier: String,
+    pub engine: String,
+    pub filename: String,
+    pub size_bytes: u64,
+    pub expected_size_mb: f64,
+    pub sha256: String,
+    pub license_weights: String,
+    pub data_note: String,
+    pub primary_host: String,
+    pub primary_url: String,
+    pub fallback_host: String,
+    pub fallback_url: String,
+    pub measured_hardware: String,
+    pub measured_seconds: f32,
+    pub measured_peak_ram_mb: u64,
+    pub strengths: Vec<String>,
+    pub weaknesses: Vec<String>,
+    pub recommended_for: Vec<String>,
+    pub min_available_ram_mb: u64,
+    pub cached: bool,
+    pub partial_bytes: u64,
+    pub disk_check: Option<DiskSpaceCheck>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ManifestModelsResponse {
+    pub cache_dir: String,
+    pub models: Vec<ManifestModelInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SetupRecommendationResponse {
+    pub recommendation: ModelRecommendation,
+    pub available_ram_mb: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -260,74 +301,9 @@ fn tier_status_from_spec(tier: ModelTier, caveat: Option<String>) -> ModelTierSt
 }
 
 fn system_ram_mb() -> (Option<u64>, Option<u64>) {
-    #[cfg(windows)]
-    {
-        #[repr(C)]
-        struct MemoryStatusEx {
-            dw_length: u32,
-            dw_memory_load: u32,
-            ull_total_phys: u64,
-            ull_avail_phys: u64,
-            ull_total_page_file: u64,
-            ull_avail_page_file: u64,
-            ull_total_virtual: u64,
-            ull_avail_virtual: u64,
-            ull_avail_extended_virtual: u64,
-        }
-
-        #[link(name = "kernel32")]
-        unsafe extern "system" {
-            fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
-        }
-
-        let mut mem = MemoryStatusEx {
-            dw_length: std::mem::size_of::<MemoryStatusEx>() as u32,
-            dw_memory_load: 0,
-            ull_total_phys: 0,
-            ull_avail_phys: 0,
-            ull_total_page_file: 0,
-            ull_avail_page_file: 0,
-            ull_total_virtual: 0,
-            ull_avail_virtual: 0,
-            ull_avail_extended_virtual: 0,
-        };
-        // SAFETY: `mem` has exact `dw_length` set for `GlobalMemoryStatusEx`.
-        let ok = unsafe { GlobalMemoryStatusEx(&mut mem) };
-        if ok != 0 {
-            return (
-                Some(mem.ull_total_phys / (1024 * 1024)),
-                Some(mem.ull_avail_phys / (1024 * 1024)),
-            );
-        }
-        (None, None)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
-            let mut total_kb = None;
-            let mut avail_kb = None;
-            for line in meminfo.lines() {
-                if let Some(rest) = line.strip_prefix("MemTotal:") {
-                    total_kb = rest
-                        .split_whitespace()
-                        .next()
-                        .and_then(|v| v.parse::<u64>().ok());
-                } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-                    avail_kb = rest
-                        .split_whitespace()
-                        .next()
-                        .and_then(|v| v.parse::<u64>().ok());
-                }
-            }
-            return (total_kb.map(|k| k / 1024), avail_kb.map(|k| k / 1024));
-        }
-        (None, None)
-    }
-
-    #[cfg(not(any(windows, target_os = "linux")))]
-    {
-        (None, None)
+    match detect_memory_info() {
+        Some(info) => (Some(info.total_mb()), Some(info.available_mb())),
+        None => (None, None),
     }
 }
 
@@ -385,8 +361,105 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn get_manifest_models() -> Result<ManifestModelsResponse, String> {
+        let cache_dir = default_cache_dir();
+        let models = manifest_entries()
+            .iter()
+            .map(|entry| {
+                let spec = spec_for_tier(entry.tier);
+                let cached = matches!(check_model_status(entry.tier), ModelStatus::Verified { .. });
+                let partial_bytes = partial_download_info(spec, &cache_dir)
+                    .map(|p| p.bytes_downloaded)
+                    .unwrap_or(0);
+                let primary_url = entry
+                    .sources
+                    .first()
+                    .map(|s| s.url.to_string())
+                    .unwrap_or_default();
+                let fallback_url = entry
+                    .sources
+                    .get(1)
+                    .map(|s| s.url.to_string())
+                    .unwrap_or_default();
+                let primary_host = extract_source_host(&primary_url);
+                let fallback_host = extract_source_host(&fallback_url);
+                let disk_check = check_disk_space(&cache_dir, entry.size_bytes);
+
+                ManifestModelInfo {
+                    id: entry.id.to_string(),
+                    tier: match entry.tier {
+                        ModelTier::Quality => "quality".to_string(),
+                        ModelTier::Fast => "fast".to_string(),
+                    },
+                    engine: entry.engine.to_string(),
+                    filename: entry.file_name.to_string(),
+                    size_bytes: entry.size_bytes,
+                    expected_size_mb: entry.size_bytes as f64 / (1024.0 * 1024.0),
+                    sha256: entry.sha256.to_string(),
+                    license_weights: entry.license_weights.to_string(),
+                    data_note: entry.data_note.to_string(),
+                    primary_host,
+                    primary_url,
+                    fallback_host,
+                    fallback_url,
+                    measured_hardware: entry.measured.hardware.to_string(),
+                    measured_seconds: entry.measured.seconds_per_photo,
+                    measured_peak_ram_mb: entry.measured.peak_ram_mb,
+                    strengths: entry
+                        .profile
+                        .strengths
+                        .iter()
+                        .map(|s| (*s).to_string())
+                        .collect(),
+                    weaknesses: entry
+                        .profile
+                        .weaknesses
+                        .iter()
+                        .map(|s| (*s).to_string())
+                        .collect(),
+                    recommended_for: entry
+                        .profile
+                        .recommended_for
+                        .iter()
+                        .map(|s| (*s).to_string())
+                        .collect(),
+                    min_available_ram_mb: entry.min_available_ram_mb,
+                    cached,
+                    partial_bytes,
+                    disk_check,
+                }
+            })
+            .collect();
+
+        Ok(ManifestModelsResponse {
+            cache_dir: cache_dir.to_string_lossy().to_string(),
+            models,
+        })
+    }
+
+    #[tauri::command]
+    pub fn recommend_setup_model(
+        usage: UsageFrequency,
+        photo_type: PhotoSubject,
+    ) -> SetupRecommendationResponse {
+        let available_ram_mb = detect_available_memory_mb();
+        let mut installed: Vec<&'static str> = Vec::new();
+        for entry in manifest_entries() {
+            if matches!(check_model_status(entry.tier), ModelStatus::Verified { .. }) {
+                installed.push(entry.id);
+            }
+        }
+        let recommendation = recommend_model(usage, photo_type, available_ram_mb, &installed);
+        SetupRecommendationResponse {
+            recommendation,
+            available_ram_mb,
+        }
+    }
+
+    #[tauri::command]
     pub async fn download_model(
         app: AppHandle,
+        state: State<'_, AppState>,
         tier: String,
         consent: bool,
     ) -> Result<String, String> {
@@ -407,36 +480,75 @@ mod commands {
         let spec = spec_for_tier(model_tier);
         let cache_dir = default_cache_dir();
 
+        let cancel_flag = {
+            let mut coord = state
+                .download_coordinator
+                .lock()
+                .map_err(|_| "Download coordinator lock poisoned".to_string())?;
+            coord.try_start(&tier)?
+        };
+
         let tier_clone = tier.clone();
         let app_clone = app.clone();
 
-        tauri::async_runtime::spawn_blocking(move || {
+        let result = tauri::async_runtime::spawn_blocking(move || {
             let mut last_pct = 255;
-            let downloaded = core_download_model(spec, &cache_dir, |dl, total| {
-                let pct = if total > 0 {
-                    ((dl as f64 / total as f64) * 100.0) as u8
-                } else {
-                    0
-                };
-                if pct != last_pct {
-                    last_pct = pct;
-                    let _ = app_clone.emit(
-                        "download_progress",
-                        DownloadProgressEvent {
-                            tier: tier_clone.clone(),
-                            downloaded_bytes: dl,
-                            total_bytes: total,
-                            percentage: pct,
-                        },
-                    );
-                }
-            })
+            let downloaded = download_model_with_options(
+                spec,
+                &cache_dir,
+                DownloadOptions {
+                    cancel: Some(cancel_flag.as_ref()),
+                    ..Default::default()
+                },
+                |dl, total| {
+                    let pct = if total > 0 {
+                        ((dl as f64 / total as f64) * 100.0) as u8
+                    } else {
+                        0
+                    };
+                    if pct != last_pct {
+                        last_pct = pct;
+                        let _ = app_clone.emit(
+                            "download_progress",
+                            DownloadProgressEvent {
+                                tier: tier_clone.clone(),
+                                downloaded_bytes: dl,
+                                total_bytes: total,
+                                percentage: pct,
+                            },
+                        );
+                    }
+                },
+            )
             .map_err(|e| e.to_string())?;
 
             Ok(downloaded.to_string_lossy().to_string())
         })
         .await
-        .map_err(|e| format!("Download task failed: {e}"))?
+        .map_err(|e| format!("Download task failed: {e}"))?;
+
+        if let Ok(mut coord) = state.download_coordinator.lock() {
+            coord.finish(&tier);
+        }
+
+        result
+    }
+
+    #[tauri::command]
+    pub fn cancel_model_download(state: State<'_, AppState>) -> Result<bool, String> {
+        let coord = state
+            .download_coordinator
+            .lock()
+            .map_err(|_| "Download coordinator lock poisoned".to_string())?;
+        Ok(coord.request_cancel())
+    }
+
+    #[tauri::command]
+    pub fn delete_partial_model_download(tier: String) -> Result<bool, String> {
+        let model_tier = parse_tier(&tier);
+        let spec = spec_for_tier(model_tier);
+        let cache_dir = default_cache_dir();
+        delete_partial_download(spec, &cache_dir).map_err(|e| e.to_string())
     }
 
     #[tauri::command]
@@ -1020,8 +1132,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_models_status,
+            commands::get_manifest_models,
+            commands::recommend_setup_model,
             commands::expand_inputs,
             commands::download_model,
+            commands::cancel_model_download,
+            commands::delete_partial_model_download,
             commands::import_model_file,
             commands::process_images,
             commands::cancel_job,
@@ -1051,6 +1167,9 @@ pub fn run() {
             let state = app_handle.state::<AppState>();
             if let Ok(coord) = state.job_coordinator.lock() {
                 coord.request_cancel();
+            };
+            if let Ok(dl_coord) = state.download_coordinator.lock() {
+                dl_coord.request_cancel();
             };
             if let Ok(cache_dir) = preview_cache_dir(app_handle) {
                 preview::cleanup_preview_cache(&cache_dir);

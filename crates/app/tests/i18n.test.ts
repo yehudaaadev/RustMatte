@@ -75,3 +75,33 @@ test("formatDisplayPath strips Windows extended-length prefixes cleanly", () => 
   );
   assert.equal(formatDisplayPath("/Users/admin/Downloads"), "/Users/admin/Downloads");
 });
+
+test("wizard recommendation reasons and model card tags translate cleanly in EN and ID", () => {
+  const pairedKeys: (keyof typeof dictionaries.en)[] = [
+    "wizardReasonOccasionalBalanced",
+    "wizardReasonBatchSimpleFast",
+    "wizardReasonBatchDetailBalanced",
+    "wizardReasonDefaultBalanced",
+    "wizardReasonLowRamOverride",
+    "wizardRamMidNote",
+    "wizardRamLowWarning",
+    "wizardRamUnknown",
+    "cardTagHairFur",
+    "cardTagGeneral",
+    "cardTagVeryFast",
+    "cardTagLowRam",
+    "cardTagTinyDownload",
+    "cardTagClosesSmallGaps",
+    "cardTagLargerDownload",
+    "cardTagFurSmears",
+    "cardTagFineHair",
+  ];
+  for (const key of pairedKeys) {
+    assert.ok(dictionaries.en[key].trim().length > 0);
+    assert.ok(dictionaries.id[key].trim().length > 0);
+    assert.ok(
+      dictionaries.id[key] !== dictionaries.en[key],
+      `Expected distinct Indonesian translation for ${key}`
+    );
+  }
+});

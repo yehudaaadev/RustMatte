@@ -167,6 +167,84 @@ export interface Translations {
   errGenericFix: string;
 
   shortcutsHint: string;
+
+  wizardStepIndicator: string;
+  wizardBackBtn: string;
+  wizardContinueBtn: string;
+  wizardFinishBtn: string;
+  wizardStep1Title: string;
+  wizardStep1Subtitle: string;
+  wizardBriefingTitle: string;
+  wizardBriefingBody: string;
+  wizardQ1Label: string;
+  wizardQ1Occasional: string;
+  wizardQ1FairlyOften: string;
+  wizardQ1RegularWork: string;
+  wizardQ1NotSure: string;
+  wizardQ2Label: string;
+  wizardQ2People: string;
+  wizardQ2Products: string;
+  wizardQ2Animals: string;
+  wizardQ2Mixed: string;
+  wizardStep3Title: string;
+  wizardRecommendedBadge: string;
+  wizardAlternativeBadge: string;
+  wizardInstalledBadge: string;
+  wizardSeeAllModels: string;
+  wizardHideAllModels: string;
+  wizardChooseModelBtn: string;
+  wizardSelectedBadge: string;
+  wizardRamDetected: string;
+  wizardRamUnknown: string;
+  wizardRamMidNote: string;
+  wizardRamLowWarning: string;
+  wizardReasonOccasionalBalanced: string;
+  wizardReasonBatchSimpleFast: string;
+  wizardReasonBatchDetailBalanced: string;
+  wizardReasonDefaultBalanced: string;
+  wizardReasonLowRamOverride: string;
+  wizardStep4Title: string;
+  wizardStep4OfflineNote: string;
+  wizardStep4ReadyInstalled: string;
+  wizardDiskCheckLine: string;
+  wizardDiskInsufficient: string;
+  wizardPartialResumeNote: string;
+  wizardDeletePartialBtn: string;
+  wizardDownloadPaused: string;
+  wizardOfflineRouteTitle: string;
+  wizardOfflineRouteBody: string;
+  wizardCopyLinkBtn: string;
+  wizardCopyHashBtn: string;
+  wizardCopiedValue: string;
+  wizardStep5Title: string;
+  wizardStep5Body: string;
+  wizardStep5ActiveModel: string;
+
+  cardFastTitle: string;
+  cardFastSummary: string;
+  cardFastSpeed: string;
+  cardFastRam: string;
+  cardBalancedTitle: string;
+  cardBalancedSummary: string;
+  cardBalancedSpeed: string;
+  cardBalancedRam: string;
+  cardMeasuredNote: string;
+  cardStrengthsLabel: string;
+  cardWeaknessesLabel: string;
+  cardDatasetAllModelsNote: string;
+  cardDetailsSummary: string;
+  cardEngineLabel: string;
+  cardSha256Label: string;
+  cardSourceLabel: string;
+  cardTagHairFur: string;
+  cardTagGeneral: string;
+  cardTagVeryFast: string;
+  cardTagLowRam: string;
+  cardTagTinyDownload: string;
+  cardTagClosesSmallGaps: string;
+  cardTagLargerDownload: string;
+  cardTagFurSmears: string;
+  cardTagFineHair: string;
 }
 
 export const dictionaries: Record<Lang, Translations> = {
@@ -352,6 +430,88 @@ export const dictionaries: Record<Lang, Translations> = {
 
     shortcutsHint:
       "Shortcuts: Ctrl+O open, Ctrl+Enter process, C compare, Ctrl+S save, Up/Down switch photo, Esc cancel",
+
+    wizardStepIndicator: "Step {step} of 5",
+    wizardBackBtn: "Back",
+    wizardContinueBtn: "Continue",
+    wizardFinishBtn: "Start using RustMatte",
+    wizardStep1Title: "Choose your language",
+    wizardStep1Subtitle: "You can change language anytime later in Settings.",
+    wizardBriefingTitle: "Two quick questions before we start",
+    wizardBriefingBody:
+      "Two quick questions before we start. RustMatte has several AI models, each with strengths and weaknesses. Your answers help us suggest the best fit, so you don't download files you don't need. Your answers are never sent anywhere and are not saved.",
+    wizardQ1Label: "How often and how much will you use RustMatte?",
+    wizardQ1Occasional: "Occasionally, a few photos",
+    wizardQ1FairlyOften: "Fairly often, dozens at a time",
+    wizardQ1RegularWork: "Regular work, hundreds of photos",
+    wizardQ1NotSure: "Not sure yet",
+    wizardQ2Label: "What kind of photos do you edit most?",
+    wizardQ2People: "People or portraits",
+    wizardQ2Products: "Products on plain backgrounds",
+    wizardQ2Animals: "Animals, hair, or fur",
+    wizardQ2Mixed: "Mixed or complex photos",
+    wizardStep3Title: "Choose your AI model",
+    wizardRecommendedBadge: "Recommended for you",
+    wizardAlternativeBadge: "Alternative",
+    wizardInstalledBadge: "Installed",
+    wizardSeeAllModels: "See all models",
+    wizardHideAllModels: "Show recommended pair only",
+    wizardChooseModelBtn: "Use this model",
+    wizardSelectedBadge: "Selected",
+    wizardRamDetected: "Available RAM detected: {mb} MB (used locally only, never saved or sent).",
+    wizardRamUnknown: "Available RAM could not be detected on this system.",
+    wizardRamMidNote: "Available RAM is moderate (3 to 5 GB); Balanced fits single photos cleanly, or keep Fast for large batches.",
+    wizardRamLowWarning: "Available RAM is below 3 GB. Picking Balanced may slow down or run out of memory on large photos.",
+    wizardReasonOccasionalBalanced: "Suggested because Balanced gives the cleanest detail for occasional photos.",
+    wizardReasonBatchSimpleFast: "Suggested because Fast processes dozens or hundreds of portraits and plain-background products quickly.",
+    wizardReasonBatchDetailBalanced: "Suggested because Balanced keeps finer hair, fur, and complex edges across batches.",
+    wizardReasonDefaultBalanced: "Suggested as a reliable all-rounder when you are just getting started.",
+    wizardReasonLowRamOverride: "Switched to Fast because available RAM is below 3 GB.",
+    wizardStep4Title: "Get your AI model",
+    wizardStep4OfflineNote:
+      "This is the only internet connection RustMatte makes. After it finishes, everything runs offline.",
+    wizardStep4ReadyInstalled: "Verified model file is already installed locally and ready to use.",
+    wizardDiskCheckLine: "Disk space: {avail} MB available (needs {req} MB including 10% headroom).",
+    wizardDiskInsufficient: "Not enough free disk space. Needs {req} MB, only {avail} MB available.",
+    wizardPartialResumeNote: "Incomplete download found ({done} / {total} MB). Clicking Download will resume.",
+    wizardDeletePartialBtn: "Delete partial download",
+    wizardDownloadPaused: "Download stopped. Partial progress was kept so you can resume later.",
+    wizardOfflineRouteTitle: "Setting up completely offline?",
+    wizardOfflineRouteBody:
+      "Download the .onnx file on another computer using the link below, verify its SHA-256 hash, then click 'Choose a file I already have'.",
+    wizardCopyLinkBtn: "Copy download link",
+    wizardCopyHashBtn: "Copy SHA-256",
+    wizardCopiedValue: "Copied",
+    wizardStep5Title: "All set",
+    wizardStep5Body: "All set. Drop photos here, or click to choose.",
+    wizardStep5ActiveModel: "Active model",
+
+    cardFastTitle: "Fast (U-2-Netp)",
+    cardFastSummary: "Very fast and light; best for many photos with simple backgrounds.",
+    cardFastSpeed: "About 0.3 to 0.5 s per photo",
+    cardFastRam: "About 0.3 to 0.6 GB RAM",
+    cardBalancedTitle: "Balanced (BiRefNet Lite 512)",
+    cardBalancedSummary: "Cleaner hair and fur at a reasonable speed.",
+    cardBalancedSpeed: "About 3 s per photo",
+    cardBalancedRam: "About 2 GB RAM",
+    cardMeasuredNote: "Measured on a mid-range PC (i5-10400, 6 cores)",
+    cardStrengthsLabel: "Strengths",
+    cardWeaknessesLabel: "Weaknesses",
+    cardDatasetAllModelsNote:
+      "All models: transparent objects such as glass are cut out as solid objects. The weights were trained on academic datasets with non-commercial terms; whether those terms extend to model weights is legally unsettled (details in MODELS.md; this is not legal advice).",
+    cardDetailsSummary: "Details",
+    cardEngineLabel: "Technical engine",
+    cardSha256Label: "SHA-256",
+    cardSourceLabel: "Primary source",
+    cardTagHairFur: "Tidier edges on fine hair and fur",
+    cardTagGeneral: "Handles mixed and complex scenes well",
+    cardTagVeryFast: "Very fast (0.3 to 0.5 s per photo)",
+    cardTagLowRam: "Low RAM (about 0.3 to 0.6 GB)",
+    cardTagTinyDownload: "Tiny 4.4 MB download",
+    cardTagClosesSmallGaps: "Sometimes closes small gaps (e.g. collars) or clips fingertips",
+    cardTagLargerDownload: "Larger 183 MB download and ~2 GB RAM",
+    cardTagFurSmears: "May leave faint smears on fur and textured backgrounds",
+    cardTagFineHair: "Less tidy on fine hair strands",
   },
   id: {
     appTitle: "RustMatte",
@@ -536,5 +696,87 @@ export const dictionaries: Record<Lang, Translations> = {
 
     shortcutsHint:
       "Pintasan: Ctrl+O buka, Ctrl+Enter proses, C bandingkan, Ctrl+S simpan, Atas/Bawah pindah foto, Esc batal",
+
+    wizardStepIndicator: "Langkah {step} dari 5",
+    wizardBackBtn: "Kembali",
+    wizardContinueBtn: "Lanjut",
+    wizardFinishBtn: "Mulai gunakan RustMatte",
+    wizardStep1Title: "Pilih bahasa",
+    wizardStep1Subtitle: "Bahasa dapat diubah kapan saja nanti di Pengaturan.",
+    wizardBriefingTitle: "Dua pertanyaan singkat sebelum mulai",
+    wizardBriefingBody:
+      "Sebelum mulai, dua pertanyaan singkat. RustMatte punya beberapa model AI dengan kelebihan dan kekurangan masing-masing. Jawabanmu membantu kami menyarankan yang paling cocok, supaya kamu tidak mengunduh file yang tidak perlu. Jawabanmu tidak dikirim ke mana pun dan tidak disimpan.",
+    wizardQ1Label: "Seberapa sering dan banyak kamu akan memakai RustMatte?",
+    wizardQ1Occasional: "Sesekali, beberapa foto",
+    wizardQ1FairlyOften: "Cukup sering, puluhan foto sekali proses",
+    wizardQ1RegularWork: "Untuk pekerjaan rutin, ratusan foto",
+    wizardQ1NotSure: "Belum tahu",
+    wizardQ2Label: "Foto apa yang paling sering kamu olah?",
+    wizardQ2People: "Orang atau potret",
+    wizardQ2Products: "Produk di latar polos",
+    wizardQ2Animals: "Hewan, rambut, atau bulu",
+    wizardQ2Mixed: "Campuran atau foto rumit",
+    wizardStep3Title: "Pilih model AI",
+    wizardRecommendedBadge: "Disarankan untukmu",
+    wizardAlternativeBadge: "Alternatif",
+    wizardInstalledBadge: "Sudah terpasang",
+    wizardSeeAllModels: "Lihat semua model",
+    wizardHideAllModels: "Tampilkan pasangan saran saja",
+    wizardChooseModelBtn: "Pakai model ini",
+    wizardSelectedBadge: "Dipilih",
+    wizardRamDetected: "RAM tersedia terdeteksi: {mb} MB (dipakai lokal saja, tidak disimpan atau dikirim).",
+    wizardRamUnknown: "RAM tersedia tidak dapat dideteksi pada perangkat ini.",
+    wizardRamMidNote: "RAM tersedia tergolong sedang (3–5 GB); Seimbang muat untuk foto satuan, atau pilih Cepat untuk batch besar.",
+    wizardRamLowWarning: "RAM tersedia di bawah 3 GB. Memilih Seimbang berisiko melambat atau kehabisan memori pada foto besar.",
+    wizardReasonOccasionalBalanced: "Disarankan karena Seimbang memberi detail paling rapi untuk pemakaian sesekali.",
+    wizardReasonBatchSimpleFast: "Disarankan karena Cepat memproses puluhan hingga ratusan foto potret dan produk latar polos dengan sangat gesit.",
+    wizardReasonBatchDetailBalanced: "Disarankan karena Seimbang menjaga detail rambut, bulu, dan tepi rumit secara konsisten.",
+    wizardReasonDefaultBalanced: "Disarankan sebagai pilihan serbaguna saat kamu baru mulai mencoba.",
+    wizardReasonLowRamOverride: "Dialihkan ke Cepat karena RAM tersedia di bawah 3 GB.",
+    wizardStep4Title: "Siapkan file model AI",
+    wizardStep4OfflineNote:
+      "Ini satu-satunya hubungan internet yang dilakukan RustMatte. Setelah selesai, semua berjalan offline.",
+    wizardStep4ReadyInstalled: "File model yang terverifikasi sudah tersedia di perangkat dan siap dipakai.",
+    wizardDiskCheckLine: "Ruang disk: {avail} MB tersedia (perlu {req} MB termasuk cadangan 10%).",
+    wizardDiskInsufficient: "Ruang penyimpanan tidak cukup. Butuh {req} MB, tersisa {avail} MB.",
+    wizardPartialResumeNote: "Unduhan tertunda ditemukan ({done} / {total} MB). Klik Unduh untuk melanjutkan.",
+    wizardDeletePartialBtn: "Hapus unduhan parsial",
+    wizardDownloadPaused: "Unduhan dihentikan. Sisa unduhan disimpan agar dapat dilanjutkan nanti.",
+    wizardOfflineRouteTitle: "Menyiapkan secara offline penuh?",
+    wizardOfflineRouteBody:
+      "Unduh file .onnx di komputer lain memakai tautan di bawah, cocokkan hash SHA-256-nya, lalu klik 'Pilih file yang sudah ada'.",
+    wizardCopyLinkBtn: "Salin tautan unduhan",
+    wizardCopyHashBtn: "Salin SHA-256",
+    wizardCopiedValue: "Tersalin",
+    wizardStep5Title: "Semua siap",
+    wizardStep5Body: "Semua siap. Seret foto ke sini, atau klik untuk memilih.",
+    wizardStep5ActiveModel: "Model aktif",
+
+    cardFastTitle: "Cepat (U-2-Netp)",
+    cardFastSummary: "Sangat cepat dan ringan; paling pas untuk banyak foto berlatar sederhana.",
+    cardFastSpeed: "Sekitar 0,3 hingga 0,5 detik per foto",
+    cardFastRam: "Sekitar 0,3 hingga 0,6 GB RAM",
+    cardBalancedTitle: "Seimbang (BiRefNet Lite 512)",
+    cardBalancedSummary: "Rambut dan bulu lebih rapi dengan kecepatan yang wajar.",
+    cardBalancedSpeed: "Sekitar 3 detik per foto",
+    cardBalancedRam: "Sekitar 2 GB RAM",
+    cardMeasuredNote: "Diukur pada PC kelas menengah (i5-10400, 6 core)",
+    cardStrengthsLabel: "Kelebihan",
+    cardWeaknessesLabel: "Kekurangan",
+    cardDatasetAllModelsNote:
+      "Semua model: benda bening seperti kaca akan dipotong sebagai benda padat. Bobot model dilatih pada dataset akademik berketentuan non-komersial; apakah ketentuan itu melekat pada bobot model masih menjadi ranah hukum yang belum pasti (detail di MODELS.md; ini bukan nasihat hukum).",
+    cardDetailsSummary: "Detail teknis",
+    cardEngineLabel: "Mesin teknis",
+    cardSha256Label: "SHA-256",
+    cardSourceLabel: "Sumber utama",
+    cardTagHairFur: "Tepi rambut halus dan bulu lebih rapi",
+    cardTagGeneral: "Andal untuk foto campuran dan latar rumit",
+    cardTagVeryFast: "Sangat cepat (0,3 hingga 0,5 detik per foto)",
+    cardTagLowRam: "Hemat RAM (sekitar 0,3 hingga 0,6 GB)",
+    cardTagTinyDownload: "Unduhan sangat kecil (4,4 MB)",
+    cardTagClosesSmallGaps: "Terkadang menutup celah kecil (misalnya kerah) atau memotong ujung jari",
+    cardTagLargerDownload: "Unduhan 183 MB dan butuh sekitar 2 GB RAM",
+    cardTagFurSmears: "Dapat menyisakan noda tipis pada bulu atau latar bertekstur",
+    cardTagFineHair: "Kurang rapi pada helai rambut halus",
   },
 };

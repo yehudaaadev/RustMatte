@@ -5,6 +5,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub const CURRENT_WIZARD_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -18,6 +20,8 @@ pub struct AppSettings {
     pub background_mode: String,
     pub background_hex: String,
     pub never_use_network: bool,
+    pub wizard_completed: bool,
+    pub wizard_version: u32,
 }
 
 impl Default for AppSettings {
@@ -33,6 +37,8 @@ impl Default for AppSettings {
             background_mode: "transparent".to_string(),
             background_hex: "#ffffff".to_string(),
             never_use_network: false,
+            wizard_completed: false,
+            wizard_version: 0,
         }
     }
 }
@@ -74,6 +80,11 @@ impl AppSettings {
         }
         if !is_valid_hex_color(&self.background_hex) {
             self.background_hex = "#ffffff".to_string();
+        }
+        if !self.wizard_completed {
+            self.wizard_version = 0;
+        } else if self.wizard_version == 0 {
+            self.wizard_version = CURRENT_WIZARD_VERSION;
         }
         self
     }
@@ -190,6 +201,8 @@ mod tests {
             background_mode: "solid".to_string(),
             background_hex: "#1234ab".to_string(),
             never_use_network: true,
+            wizard_completed: true,
+            wizard_version: CURRENT_WIZARD_VERSION,
         };
 
         save_settings_atomic(&path, &custom).unwrap();
