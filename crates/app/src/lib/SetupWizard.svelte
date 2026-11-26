@@ -17,6 +17,7 @@
     type UsageFrequency,
     type WizardModelId,
     type WizardState,
+    type WizardStep,
   } from "$lib/wizard";
 
   interface Props {
@@ -30,6 +31,8 @@
     downloadError: FriendlyError | null;
     downloadPaused: boolean;
     canDismiss: boolean;
+    initialStep?: WizardStep;
+    initialModelId?: WizardModelId | null;
     onLanguageChange: (nextLang: Lang) => void;
     onRefreshManifest: () => Promise<void>;
     onDownload: (tier: "quality" | "fast") => Promise<void>;
@@ -51,6 +54,8 @@
     downloadError,
     downloadPaused,
     canDismiss,
+    initialStep = 1,
+    initialModelId = null,
     onLanguageChange,
     onRefreshManifest,
     onDownload,
@@ -67,7 +72,11 @@
 
   $effect(() => {
     if (open) {
-      wState = createInitialWizardState();
+      wState = {
+        ...createInitialWizardState(),
+        step: initialStep,
+        selectedModelId: initialModelId,
+      };
       recResponse = null;
       copiedKey = null;
     }

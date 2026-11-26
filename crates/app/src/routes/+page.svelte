@@ -7,7 +7,8 @@
   import { dictionaries, type Lang } from "$lib/i18n";
   import { mapTechnicalError, type FriendlyError } from "$lib/errors";
   import SetupWizard from "$lib/SetupWizard.svelte";
-  import type { ManifestModelInfo } from "$lib/wizard";
+  import SettingsModal from "$lib/SettingsModal.svelte";
+  import type { ManifestModelInfo, WizardModelId, WizardStep } from "$lib/wizard";
   import {
     formatDisplayPath,
     renderRejectedReason,
@@ -24,6 +25,7 @@
   } from "$lib/slider";
   import {
     applyProgressEvent,
+    applySingleRetryResult,
     clearQueue as clearQueueState,
     createInitialQueueState,
     enqueuePaths,
@@ -32,6 +34,7 @@
     hasStaleProcessedItems,
     markModelMissing,
     selectAdjacent,
+    selectItemModelResult,
     setDownloadProgress,
     setJobPhase,
     startJob,
@@ -91,6 +94,12 @@
   let fastModel = $state<ModelTierInfo | null>(null);
   let manifestModels = $state<ManifestModelInfo[]>([]);
   let showSetupWizard = $state(false);
+  let wizardInitialStep = $state<WizardStep>(1);
+  let wizardInitialModelId = $state<WizardModelId | null>(null);
+  let showSettingsModal = $state(false);
+  let retryingModelTier = $state<"quality" | "fast" | null>(null);
+  let compareModelsSideBySide = $state(false);
+  let furSuggestionDismissed = $state(false);
   let downloadError = $state<FriendlyError | null>(null);
   let downloadPaused = $state(false);
 
@@ -401,8 +410,53 @@
   async function openModelSetup(_tier: "quality" | "fast") {
     downloadError = null;
     downloadPaused = false;
+    wizardInitialStep = 1;
+    wizardInitialModelId = null;
     await refreshModelStatus();
     showSetupWizard = true;
+  }
+
+  async function openWizardForDownload(id: WizardModelId, _tier: "quality" | "fast") {
+    downloadError = null;
+    downloadPaused = false;
+    wizardInitialStep = 4;
+    wizardInitialModelId = id;
+    await refreshModelStatus();
+    showSettingsModal = false;
+    showSetupWizard = true;
+  }
+
+  async function retrySelectedWithModel(targetTier: "quality" | "fast") {
+    if (!selectedItem || isBusy || retryingModelTier) return;
+    await refreshModelStatus();
+    const targetInfo = targetTier === "fast" ? fastModel : qualityModel;
+    if (!targetInfo?.cached) {
+      await openWizardForDownload(targetTier === "fast" ? "fast" : "balanced", targetTier);
+      return;
+    }
+
+    retryingModelTier = targetTier;
+    activeError = null;
+    try {
+      const res = await invoke<ProgressPayload>("retry_single_with_model", {
+        inputPath: selectedItem.path,
+        options: {
+          tier: targetTier,
+          device: selectedDevice,
+          max_side: maxSide,
+          refine_level: refineLevel,
+          output_folder: null,
+          background_hex: backgroundMode === "solid" ? backgroundHex : null,
+        },
+      });
+      qState = applySingleRetryResult(qState, res);
+      compareModelsSideBySide = true;
+      resetViewTransform();
+    } catch (e) {
+      activeError = mapTechnicalError(String(e), t);
+    } finally {
+      retryingModelTier = null;
+    }
   }
 
   async function startDownloadFromWizard(tier: "quality" | "fast") {
@@ -790,6 +844,10 @@
         showAboutModal = false;
         return;
       }
+      if (showSettingsModal) {
+        showSettingsModal = false;
+        return;
+      }
       if (showSetupWizard && wizardCompleted && !isDownloading) {
         showSetupWizard = false;
         return;
@@ -800,7 +858,7 @@
       }
     }
 
-    if (showAboutModal || showSetupWizard) return;
+    if (showAboutModal || showSettingsModal || showSetupWizard) return;
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
       e.preventDefault();
@@ -881,6 +939,7 @@
         <option value="dark">{t.themeDark}</option>
       </select>
 
+      <button class="secondary-btn sm" onclick={() => (showSettingsModal = true)}>{t.settingsBtn}</button>
       <button class="secondary-btn sm" onclick={openAbout}>{t.aboutBtn}</button>
     </div>
   </header>
@@ -1079,28 +1138,113 @@
           {/if}
         {/if}
 
-        {#if cutoutPreviewUrl && originalPreviewUrl}
-          <div class="viewer-toolbar">
-            <div class="zoom-controls">
-              <button class="secondary-btn sm" onclick={() => adjustZoom(-0.25)}>{t.zoomOut}</button>
-              <span class="zoom-readout">{Math.round(zoom * 100)}%</span>
-              <button class="secondary-btn sm" onclick={() => adjustZoom(0.25)}>{t.zoomIn}</button>
-              <button class="secondary-btn sm" onclick={resetViewTransform}>{t.zoomReset}</button>
+        {#if selectedItem && selectedItem.processedTier === "fast" && !selectedItem.resultsByTier?.quality && !furSuggestionDismissed && !isBusy}
+          <div class="banner info" role="status">
+            <span>{t.retryFurSuggestionBanner}</span>
+            <div class="panel-header-actions">
               <button
                 type="button"
-                class="secondary-btn sm {isComparing ? 'toggle-active' : ''}"
-                aria-pressed={isComparing}
-                title={t.compareToggleHint}
-                onclick={() => (sliderState = toggleCompareWithOriginal(sliderState))}
+                class="secondary-btn sm"
+                disabled={retryingModelTier !== null}
+                onclick={() => retrySelectedWithModel("quality")}
               >
-                {isComparing ? t.compareToggleActiveBtn : t.compareToggleBtn}
+                {t.retryTryBalancedBtn}
+              </button>
+              <button type="button" class="text-btn" onclick={() => (furSuggestionDismissed = true)}>
+                {t.dismissBtn}
               </button>
             </div>
-            {#if zoom > 1}
+          </div>
+        {/if}
+
+        {#if cutoutPreviewUrl && originalPreviewUrl && selectedItem}
+          {@const altTier = selectedItem.processedTier === "fast" ? "quality" : "fast"}
+          {@const altModelName = altTier === "fast" ? t.cardFastTitle : t.cardBalancedTitle}
+          {@const bothModelsReady = Boolean(selectedItem.resultsByTier?.fast && selectedItem.resultsByTier?.quality)}
+          <div class="viewer-toolbar">
+            <div class="zoom-controls">
+              {#if !compareModelsSideBySide || !bothModelsReady}
+                <button class="secondary-btn sm" onclick={() => adjustZoom(-0.25)}>{t.zoomOut}</button>
+                <span class="zoom-readout">{Math.round(zoom * 100)}%</span>
+                <button class="secondary-btn sm" onclick={() => adjustZoom(0.25)}>{t.zoomIn}</button>
+                <button class="secondary-btn sm" onclick={resetViewTransform}>{t.zoomReset}</button>
+                <button
+                  type="button"
+                  class="secondary-btn sm {isComparing ? 'toggle-active' : ''}"
+                  aria-pressed={isComparing}
+                  title={t.compareToggleHint}
+                  onclick={() => (sliderState = toggleCompareWithOriginal(sliderState))}
+                >
+                  {isComparing ? t.compareToggleActiveBtn : t.compareToggleBtn}
+                </button>
+              {/if}
+
+              <button
+                type="button"
+                class="secondary-btn sm"
+                disabled={isBusy || retryingModelTier !== null}
+                onclick={() => retrySelectedWithModel(altTier)}
+              >
+                {retryingModelTier
+                  ? t.retryRunningLabel.replace("{model}", retryingModelTier === "fast" ? t.cardFastTitle : t.cardBalancedTitle)
+                  : t.retryWithModelBtn.replace("{model}", altModelName)}
+              </button>
+
+              {#if bothModelsReady}
+                <div class="model-switch-group" role="group" aria-label={t.processedModelLabel}>
+                  <button
+                    type="button"
+                    class="secondary-btn sm {selectedItem.processedTier === 'fast' ? 'toggle-active' : ''}"
+                    onclick={() => (qState = selectItemModelResult(qState, selectedItem.path, "fast"))}
+                  >
+                    {t.cardFastTitle}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-btn sm {selectedItem.processedTier === 'quality' ? 'toggle-active' : ''}"
+                    onclick={() => (qState = selectItemModelResult(qState, selectedItem.path, "quality"))}
+                  >
+                    {t.cardBalancedTitle}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="secondary-btn sm {compareModelsSideBySide ? 'toggle-active' : ''}"
+                  onclick={() => (compareModelsSideBySide = !compareModelsSideBySide)}
+                >
+                  {compareModelsSideBySide ? t.retrySingleViewBtn : t.retrySideBySideBtn}
+                </button>
+              {/if}
+            </div>
+            {#if zoom > 1 && (!compareModelsSideBySide || !bothModelsReady)}
               <span class="muted small">{t.panHint}</span>
             {/if}
           </div>
 
+          {#if compareModelsSideBySide && bothModelsReady && selectedItem.resultsByTier?.fast && selectedItem.resultsByTier?.quality}
+            {@const fastRes = selectedItem.resultsByTier.fast}
+            {@const qualRes = selectedItem.resultsByTier.quality}
+            <div class="side-by-side-grid">
+              <button
+                type="button"
+                class="side-pane {backgroundMode === 'transparent' ? 'checkerboard' : ''} {selectedItem.processedTier === 'fast' ? 'active-pane' : ''}"
+                style:background-color={backgroundMode === "solid" ? backgroundHex : undefined}
+                onclick={() => (qState = selectItemModelResult(qState, selectedItem.path, "fast"))}
+              >
+                <img src={convertFileSrc(fastRes.cutoutPreviewPath)} alt={t.cardFastTitle} />
+                <span class="canvas-tag left">{t.cardFastTitle} ({(fastRes.timingMs / 1000).toFixed(2)}s)</span>
+              </button>
+              <button
+                type="button"
+                class="side-pane {backgroundMode === 'transparent' ? 'checkerboard' : ''} {selectedItem.processedTier === 'quality' ? 'active-pane' : ''}"
+                style:background-color={backgroundMode === "solid" ? backgroundHex : undefined}
+                onclick={() => (qState = selectItemModelResult(qState, selectedItem.path, "quality"))}
+              >
+                <img src={convertFileSrc(qualRes.cutoutPreviewPath)} alt={t.cardBalancedTitle} />
+                <span class="canvas-tag left">{t.cardBalancedTitle} ({(qualRes.timingMs / 1000).toFixed(2)}s)</span>
+              </button>
+            </div>
+          {:else}
           <div
             class="slider-viewport {backgroundMode === 'transparent' ? 'checkerboard' : ''}"
             style:background-color={backgroundMode === "solid" ? backgroundHex : undefined}
@@ -1148,6 +1292,7 @@
               <span class="canvas-tag right">{t.cutoutLabel}</span>
             {/if}
           </div>
+          {/if}
 
           {#if selectedItem}
             <div class="stats-bar">
@@ -1308,6 +1453,8 @@
     {downloadError}
     {downloadPaused}
     canDismiss={wizardCompleted}
+    initialStep={wizardInitialStep}
+    initialModelId={wizardInitialModelId}
     onLanguageChange={(next) => (lang = next)}
     onRefreshManifest={refreshModelStatus}
     onDownload={startDownloadFromWizard}
@@ -1316,6 +1463,47 @@
     onImportLocal={importLocalModelFile}
     onComplete={completeSetupWizard}
     onDismiss={() => (showSetupWizard = false)}
+  />
+
+  <SettingsModal
+    open={showSettingsModal}
+    {t}
+    {lang}
+    {themeMode}
+    {selectedTier}
+    {refineLevel}
+    {maxSide}
+    {backgroundMode}
+    {backgroundHex}
+    {outputFolder}
+    displayOutputFolder={outputFolder ? formatDisplayPath(outputFolder) : ""}
+    {neverUseNetwork}
+    {manifestModels}
+    isBusy={isBusy || isDownloading}
+    {diagnosticsCopied}
+    onClose={() => (showSettingsModal = false)}
+    onLanguageChange={(v) => (lang = v)}
+    onThemeChange={(v) => (themeMode = v)}
+    onTierChange={(v) => (selectedTier = v)}
+    onRefineChange={(v) => (refineLevel = v)}
+    onMaxSideChange={(v) => (maxSide = v)}
+    onBgModeChange={(v) => (backgroundMode = v)}
+    onBgHexChange={(v) => (backgroundHex = v)}
+    onChooseOutputFolder={chooseOutputFolder}
+    onResetOutputFolder={() => (outputFolder = null)}
+    onNeverUseNetworkChange={(v) => (neverUseNetwork = v)}
+    onRerunWizard={() => {
+      showSettingsModal = false;
+      openModelSetup(selectedTier);
+    }}
+    onDownloadOrImportModel={openWizardForDownload}
+    onRefreshModels={refreshModelStatus}
+    onOpenAbout={() => {
+      showSettingsModal = false;
+      openAbout();
+    }}
+    onCopyDiagnostics={copyDiagnostics}
+    onError={(err) => (activeError = err)}
   />
 
   <!-- About & Licenses Modal -->
@@ -1730,6 +1918,44 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .model-switch-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .side-by-side-grid {
+    flex: 1;
+    min-height: 240px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .side-pane {
+    position: relative;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .side-pane.active-pane {
+    border-color: var(--accent);
+  }
+
+  .side-pane img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
   }
 
   .zoom-readout {

@@ -245,6 +245,38 @@ export interface Translations {
   cardTagLargerDownload: string;
   cardTagFurSmears: string;
   cardTagFineHair: string;
+
+  settingsBtn: string;
+  settingsTitle: string;
+  settingsGeneralSection: string;
+  settingsModelsSection: string;
+  settingsActiveModelLabel: string;
+  settingsRerunWizardBtn: string;
+  settingsModelSizeOnDisk: string;
+  settingsModelNotOnDisk: string;
+  settingsModelVerifyBtn: string;
+  settingsModelDeleteBtn: string;
+  settingsModelDeleteConfirm: string;
+  settingsModelConfirmDeleteBtn: string;
+  settingsModelDeletedNotice: string;
+  settingsModelVerifyOk: string;
+  settingsModelVerifyCorrupt: string;
+  settingsModelVerifyMissing: string;
+  settingsModelDownloadBtn: string;
+  settingsNetworkSection: string;
+  settingsOutputSection: string;
+  settingsAdvancedSummary: string;
+  settingsFeedbackSection: string;
+  sendFeedbackBtn: string;
+  sendFeedbackHint: string;
+  sendFeedbackNoAccountNote: string;
+
+  retryWithModelBtn: string;
+  retryRunningLabel: string;
+  retrySideBySideBtn: string;
+  retrySingleViewBtn: string;
+  retryFurSuggestionBanner: string;
+  retryTryBalancedBtn: string;
 }
 
 export const dictionaries: Record<Lang, Translations> = {
@@ -512,6 +544,38 @@ export const dictionaries: Record<Lang, Translations> = {
     cardTagLargerDownload: "Larger 183 MB download and ~2 GB RAM",
     cardTagFurSmears: "May leave faint smears on fur and textured backgrounds",
     cardTagFineHair: "Less tidy on fine hair strands",
+
+    settingsBtn: "Settings",
+    settingsTitle: "Settings",
+    settingsGeneralSection: "Appearance & Language",
+    settingsModelsSection: "AI Models",
+    settingsActiveModelLabel: "Active model",
+    settingsRerunWizardBtn: "Re-run setup wizard",
+    settingsModelSizeOnDisk: "Size on disk: {mb} MB",
+    settingsModelNotOnDisk: "Not downloaded ({mb} MB download)",
+    settingsModelVerifyBtn: "Verify again",
+    settingsModelDeleteBtn: "Delete",
+    settingsModelDeleteConfirm: "Delete {name} to free {mb} MB on disk?",
+    settingsModelConfirmDeleteBtn: "Confirm delete",
+    settingsModelDeletedNotice: "Deleted {name} (freed {mb} MB).",
+    settingsModelVerifyOk: "Integrity verified (SHA-256 matches, {mb} MB).",
+    settingsModelVerifyCorrupt: "Checksum mismatch. Delete and re-download or import a valid file.",
+    settingsModelVerifyMissing: "Model file is missing from local storage.",
+    settingsModelDownloadBtn: "Download / Import",
+    settingsNetworkSection: "Network & Offline",
+    settingsOutputSection: "Output Defaults",
+    settingsAdvancedSummary: "Advanced",
+    settingsFeedbackSection: "Feedback & About",
+    sendFeedbackBtn: "Send feedback",
+    sendFeedbackHint: "Opens the GitHub Issues page in your browser. RustMatte never sends requests on its own.",
+    sendFeedbackNoAccountNote: "No GitHub account? You can also visit the project repository page on the web.",
+
+    retryWithModelBtn: "Retry with {model}",
+    retryRunningLabel: "Retrying with {model}...",
+    retrySideBySideBtn: "Compare models side by side",
+    retrySingleViewBtn: "Single result view",
+    retryFurSuggestionBanner: "Photo processed with Fast. For finer hair or fur edges, try Balanced.",
+    retryTryBalancedBtn: "Retry with Balanced",
   },
   id: {
     appTitle: "RustMatte",
@@ -778,5 +842,37 @@ export const dictionaries: Record<Lang, Translations> = {
     cardTagLargerDownload: "Unduhan 183 MB dan butuh sekitar 2 GB RAM",
     cardTagFurSmears: "Dapat menyisakan noda tipis pada bulu atau latar bertekstur",
     cardTagFineHair: "Kurang rapi pada helai rambut halus",
+
+    settingsBtn: "Pengaturan",
+    settingsTitle: "Pengaturan",
+    settingsGeneralSection: "Bahasa & Tampilan",
+    settingsModelsSection: "Model AI",
+    settingsActiveModelLabel: "Model aktif",
+    settingsRerunWizardBtn: "Jalankan ulang panduan awal",
+    settingsModelSizeOnDisk: "Ukuran di disk: {mb} MB",
+    settingsModelNotOnDisk: "Belum terpasang (unduhan {mb} MB)",
+    settingsModelVerifyBtn: "Verifikasi ulang",
+    settingsModelDeleteBtn: "Hapus",
+    settingsModelDeleteConfirm: "Hapus {name} untuk membebaskan {mb} MB ruang disk?",
+    settingsModelConfirmDeleteBtn: "Ya, hapus",
+    settingsModelDeletedNotice: "{name} dihapus (ruang bebas {mb} MB).",
+    settingsModelVerifyOk: "Integritas terverifikasi (SHA-256 cocok, {mb} MB).",
+    settingsModelVerifyCorrupt: "Checksum tidak cocok. Hapus lalu unduh ulang atau impor file yang benar.",
+    settingsModelVerifyMissing: "File model tidak ditemukan di penyimpanan lokal.",
+    settingsModelDownloadBtn: "Unduh / Impor",
+    settingsNetworkSection: "Jaringan & Offline",
+    settingsOutputSection: "Pengaturan Output Bawaan",
+    settingsAdvancedSummary: "Lanjutan",
+    settingsFeedbackSection: "Masukan & Tentang",
+    sendFeedbackBtn: "Kirim masukan",
+    sendFeedbackHint: "Membuka halaman GitHub Issues di browser. RustMatte tidak mengirim permintaan jaringan sendiri.",
+    sendFeedbackNoAccountNote: "Tidak punya akun GitHub? Kamu juga bisa melihat halaman proyek di web.",
+
+    retryWithModelBtn: "Coba ulang pakai {model}",
+    retryRunningLabel: "Memproses ulang pakai {model}...",
+    retrySideBySideBtn: "Bandingkan dua model berdampingan",
+    retrySingleViewBtn: "Tampilan satu hasil",
+    retryFurSuggestionBanner: "Foto diproses dengan Cepat. Untuk tepi rambut atau bulu yang lebih halus, coba Seimbang.",
+    retryTryBalancedBtn: "Coba ulang pakai Seimbang",
   },
 };

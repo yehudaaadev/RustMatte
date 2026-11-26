@@ -20,6 +20,19 @@ export interface ItemWarning {
   detail: string;
 }
 
+export interface TierCutoutResult {
+  tier: "quality" | "fast";
+  cutoutPreviewPath: string;
+  fullCutoutPath: string;
+  timingMs: number;
+  inferenceMs: number;
+  width: number;
+  height: number;
+  device: string;
+  refineLevel?: "none" | "light" | "standard";
+  maxSide?: number | null;
+}
+
 export interface QueueItem {
   path: string;
   name: string;
@@ -38,6 +51,7 @@ export interface QueueItem {
   processedTier?: "quality" | "fast";
   processedRefine?: "none" | "light" | "standard";
   processedMaxSide?: number | null;
+  resultsByTier?: Partial<Record<"quality" | "fast", TierCutoutResult>>;
 }
 
 export interface RejectedItem {
@@ -197,6 +211,7 @@ export function startJob(state: QueueState, loadingModelFirst: boolean): QueueSt
       processedTier: undefined,
       processedRefine: undefined,
       processedMaxSide: undefined,
+      resultsByTier: undefined,
     })),
   };
 }
@@ -221,6 +236,67 @@ function normalizeProcessedRefine(
   return undefined;
 }
 
+function buildUpdatedItemFromPayload(
+  item: QueueItem,
+  payload: ProgressPayload
+): QueueItem {
+  const mappedStatus: QueueItemStatus =
+    payload.status === "failed"
+      ? "failed"
+      : payload.status === "warning"
+      ? "warning"
+      : "done";
+  const tier = normalizeProcessedTier(payload.tier);
+  const refineLevel = normalizeProcessedRefine(payload.refine_level);
+  const maxSide =
+    payload.max_side === undefined ? undefined : payload.max_side;
+
+  let nextResultsByTier = item.resultsByTier;
+  if (
+    tier &&
+    (mappedStatus === "done" || mappedStatus === "warning") &&
+    payload.cutout_preview_path &&
+    payload.full_cutout_path
+  ) {
+    nextResultsByTier = {
+      ...(item.resultsByTier ?? {}),
+      [tier]: {
+        tier,
+        cutoutPreviewPath: payload.cutout_preview_path,
+        fullCutoutPath: payload.full_cutout_path,
+        timingMs: payload.timing_ms,
+        inferenceMs: payload.inference_ms,
+        width: payload.width,
+        height: payload.height,
+        device: payload.device,
+        refineLevel,
+        maxSide,
+      },
+    };
+  }
+
+  return {
+    ...item,
+    status: mappedStatus,
+    timingMs: payload.timing_ms,
+    inferenceMs: payload.inference_ms,
+    warnings: payload.warnings ?? [],
+    oomWarning: Boolean(payload.oom_warning),
+    error: payload.error ?? undefined,
+    originalPreviewPath:
+      payload.original_preview_path ?? item.originalPreviewPath,
+    cutoutPreviewPath: payload.cutout_preview_path ?? undefined,
+    fullCutoutPath: payload.full_cutout_path ?? undefined,
+    width: payload.width || undefined,
+    height: payload.height || undefined,
+    device: payload.device || undefined,
+    processedTier: tier,
+    processedRefine: refineLevel,
+    processedMaxSide: maxSide,
+    resultsByTier: nextResultsByTier,
+  };
+}
+
 export function applyProgressEvent(
   state: QueueState,
   payload: ProgressPayload
@@ -231,31 +307,7 @@ export function applyProgressEvent(
       return item;
     }
     matchedIdx = idx;
-    const mappedStatus: QueueItemStatus =
-      payload.status === "failed"
-        ? "failed"
-        : payload.status === "warning"
-        ? "warning"
-        : "done";
-    return {
-      ...item,
-      status: mappedStatus,
-      timingMs: payload.timing_ms,
-      inferenceMs: payload.inference_ms,
-      warnings: payload.warnings ?? [],
-      oomWarning: Boolean(payload.oom_warning),
-      error: payload.error ?? undefined,
-      originalPreviewPath: payload.original_preview_path ?? undefined,
-      cutoutPreviewPath: payload.cutout_preview_path ?? undefined,
-      fullCutoutPath: payload.full_cutout_path ?? undefined,
-      width: payload.width || undefined,
-      height: payload.height || undefined,
-      device: payload.device || undefined,
-      processedTier: normalizeProcessedTier(payload.tier),
-      processedRefine: normalizeProcessedRefine(payload.refine_level),
-      processedMaxSide:
-        payload.max_side === undefined ? undefined : payload.max_side,
-    };
+    return buildUpdatedItemFromPayload(item, payload);
   });
 
   const nextSelected =
@@ -273,6 +325,56 @@ export function applyProgressEvent(
         ? `${payload.file}: ${payload.error}`
         : state.lastError,
   };
+}
+
+export function applySingleRetryResult(
+  state: QueueState,
+  payload: ProgressPayload
+): QueueState {
+  const nextItems = state.items.map((item) => {
+    if (item.path !== payload.input_path) {
+      return item;
+    }
+    return buildUpdatedItemFromPayload(item, payload);
+  });
+  return {
+    ...state,
+    items: nextItems,
+    lastError:
+      payload.status === "failed" && payload.error
+        ? `${payload.file}: ${payload.error}`
+        : state.lastError,
+  };
+}
+
+export function selectItemModelResult(
+  state: QueueState,
+  itemPath: string,
+  tier: "quality" | "fast"
+): QueueState {
+  const nextItems = state.items.map((item) => {
+    if (item.path !== itemPath) {
+      return item;
+    }
+    const chosen = item.resultsByTier?.[tier];
+    if (!chosen) {
+      return item;
+    }
+    return {
+      ...item,
+      cutoutPreviewPath: chosen.cutoutPreviewPath,
+      fullCutoutPath: chosen.fullCutoutPath,
+      timingMs: chosen.timingMs,
+      inferenceMs: chosen.inferenceMs,
+      width: chosen.width,
+      height: chosen.height,
+      device: chosen.device,
+      processedTier: chosen.tier,
+      processedRefine: chosen.refineLevel,
+      processedMaxSide: chosen.maxSide,
+    };
+  });
+  return { ...state, items: nextItems };
 }
 
 export function finishJob(

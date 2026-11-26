@@ -55,6 +55,7 @@ export interface ManifestModelInfo {
   recommended_for: string[];
   min_available_ram_mb: number;
   cached: boolean;
+  size_on_disk_bytes: number;
   partial_bytes: number;
   disk_check: DiskSpaceCheck | null;
 }

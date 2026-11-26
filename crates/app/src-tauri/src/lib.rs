@@ -28,10 +28,10 @@ use rustmatte_core::model::{
 };
 use rustmatte_core::pipeline::downscale_if_needed;
 use rustmatte_core::{
-    check_disk_space, delete_partial_download, detect_available_memory_mb, detect_memory_info,
-    download_model_with_options, extract_source_host, manifest_entries, partial_download_info,
-    recommend_model, DiskSpaceCheck, DownloadOptions, ExecutionProvider, ModelRecommendation,
-    ModelTier, PhotoSubject, UsageFrequency, Warning,
+    check_disk_space, delete_cached_model, delete_partial_download, detect_available_memory_mb,
+    detect_memory_info, download_model_with_options, extract_source_host, manifest_entries,
+    partial_download_info, recommend_model, DiskSpaceCheck, DownloadOptions, ExecutionProvider,
+    ModelRecommendation, ModelTier, PhotoSubject, UsageFrequency, Warning,
 };
 
 use crate::settings::AppSettings;
@@ -41,6 +41,16 @@ use crate::validation::ExpandedInputs;
 const SHIPPED_THIRD_PARTY_LICENSES: &str = include_str!("../../../../THIRD_PARTY_LICENSES.md");
 const SHIPPED_MODELS_MD: &str = include_str!("../../../../MODELS.md");
 const HUGE_IMAGE_PIXELS_THRESHOLD: u64 = 16_000_000;
+pub const FEEDBACK_ISSUES_URL: &str = "https://github.com/yehudaaadev/RustMatte/issues/new/choose";
+
+/// Validates that a feedback link matches the single hard-coded allow-listed repository issues URL.
+pub fn validate_feedback_url(raw: &str) -> Result<&'static str, String> {
+    if raw.trim() == FEEDBACK_ISSUES_URL {
+        Ok(FEEDBACK_ISSUES_URL)
+    } else {
+        Err("Feedback URL is not on the allow-list".to_string())
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModelTierStatus {
@@ -85,8 +95,23 @@ pub struct ManifestModelInfo {
     pub recommended_for: Vec<String>,
     pub min_available_ram_mb: u64,
     pub cached: bool,
+    pub size_on_disk_bytes: u64,
     pub partial_bytes: u64,
     pub disk_check: Option<DiskSpaceCheck>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VerifyModelResult {
+    pub tier: String,
+    pub status: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteModelResult {
+    pub tier: String,
+    pub deleted: bool,
+    pub freed_bytes: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -367,7 +392,14 @@ mod commands {
             .iter()
             .map(|entry| {
                 let spec = spec_for_tier(entry.tier);
-                let cached = matches!(check_model_status(entry.tier), ModelStatus::Verified { .. });
+                let model_status = check_model_status(entry.tier);
+                let cached = matches!(model_status, ModelStatus::Verified { .. });
+                let size_on_disk_bytes = match model_status {
+                    ModelStatus::Verified { ref path } | ModelStatus::Corrupt { ref path, .. } => {
+                        std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+                    }
+                    ModelStatus::Missing { .. } => 0,
+                };
                 let partial_bytes = partial_download_info(spec, &cache_dir)
                     .map(|p| p.bytes_downloaded)
                     .unwrap_or(0);
@@ -425,6 +457,7 @@ mod commands {
                         .collect(),
                     min_available_ram_mb: entry.min_available_ram_mb,
                     cached,
+                    size_on_disk_bytes,
                     partial_bytes,
                     disk_check,
                 }
@@ -549,6 +582,104 @@ mod commands {
         let spec = spec_for_tier(model_tier);
         let cache_dir = default_cache_dir();
         delete_partial_download(spec, &cache_dir).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn verify_cached_model(tier: String) -> Result<VerifyModelResult, String> {
+        let model_tier = parse_tier(&tier);
+        let tier_label = match model_tier {
+            ModelTier::Quality => "quality",
+            ModelTier::Fast => "fast",
+        }
+        .to_string();
+
+        tauri::async_runtime::spawn_blocking(move || {
+            let (status, size_bytes) = match check_model_status(model_tier) {
+                ModelStatus::Verified { path } => (
+                    "verified".to_string(),
+                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                ),
+                ModelStatus::Corrupt { path, .. } => (
+                    "corrupt".to_string(),
+                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                ),
+                ModelStatus::Missing { .. } => ("missing".to_string(), 0),
+            };
+            VerifyModelResult {
+                tier: tier_label,
+                status,
+                size_bytes,
+            }
+        })
+        .await
+        .map_err(|e| format!("Model verification task failed: {e}"))
+    }
+
+    #[tauri::command]
+    pub async fn delete_cached_model_cmd(
+        state: State<'_, AppState>,
+        tier: String,
+    ) -> Result<DeleteModelResult, String> {
+        let model_tier = parse_tier(&tier);
+        let tier_label = match model_tier {
+            ModelTier::Quality => "quality",
+            ModelTier::Fast => "fast",
+        }
+        .to_string();
+
+        if let Ok(coord) = state.download_coordinator.lock() {
+            coord.request_cancel();
+        }
+        if let Ok(mut cache) = state.session_cache.lock() {
+            cache.evict(model_tier);
+        }
+
+        tauri::async_runtime::spawn_blocking(move || {
+            match delete_cached_model(model_tier).map_err(|e| e.to_string())? {
+                Some((_, freed_bytes)) => Ok(DeleteModelResult {
+                    tier: tier_label,
+                    deleted: true,
+                    freed_bytes,
+                }),
+                None => Ok(DeleteModelResult {
+                    tier: tier_label,
+                    deleted: false,
+                    freed_bytes: 0,
+                }),
+            }
+        })
+        .await
+        .map_err(|e| format!("Model deletion task failed: {e}"))?
+    }
+
+    #[tauri::command]
+    pub fn open_feedback_url() -> Result<(), String> {
+        let url = validate_feedback_url(FEEDBACK_ISSUES_URL)?;
+
+        #[cfg(target_os = "windows")]
+        let mut cmd = {
+            let mut c = std::process::Command::new("rundll32.exe");
+            c.args(["url.dll,FileProtocolHandler", url]);
+            c
+        };
+
+        #[cfg(target_os = "macos")]
+        let mut cmd = {
+            let mut c = std::process::Command::new("open");
+            c.arg(url);
+            c
+        };
+
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let mut cmd = {
+            let mut c = std::process::Command::new("xdg-open");
+            c.arg(url);
+            c
+        };
+
+        cmd.spawn()
+            .map_err(|e| format!("Failed to open feedback page: {e}"))?;
+        Ok(())
     }
 
     #[tauri::command]
@@ -948,6 +1079,162 @@ mod commands {
     }
 
     #[tauri::command]
+    pub async fn retry_single_with_model(
+        app: AppHandle,
+        state: State<'_, AppState>,
+        input_path: String,
+        options: ProcessImagesOptions,
+    ) -> Result<JobProgressEvent, String> {
+        let validated = validation::validate_input_path(&input_path)?;
+        if let Some(ref hex) = options.background_hex {
+            let _ = preview::parse_hex_rgb(hex)?;
+        }
+
+        let (job_id, _cancel_flag) = {
+            let mut coord = state
+                .job_coordinator
+                .lock()
+                .map_err(|_| "Job coordinator lock poisoned".to_string())?;
+            coord.try_start()?
+        };
+
+        let preview_dir = preview_cache_dir(&app)?;
+        let tier = parse_tier(&options.tier);
+        let ep = parse_device(&options.device);
+        let refine_level = RefineLevel::parse(&options.refine_level);
+        let tier_str = match tier {
+            ModelTier::Fast => "fast",
+            ModelTier::Quality => "quality",
+        }
+        .to_string();
+        let refine_str = match refine_level {
+            RefineLevel::None => "none",
+            RefineLevel::Light => "light",
+            RefineLevel::Standard => "standard",
+        }
+        .to_string();
+        let max_side = options.max_side;
+        let bg_hex = options.background_hex.clone();
+        let app_clone = app.clone();
+
+        let event = tauri::async_runtime::spawn_blocking(move || {
+            let t_item = Instant::now();
+            let file_name = validated
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("image")
+                .to_string();
+            let mut item_warnings: Vec<ItemWarning> = Vec::new();
+            let oom_warning = image::image_dimensions(&validated)
+                .map(|(w, h)| {
+                    (w as u64) * (h as u64) >= HUGE_IMAGE_PIXELS_THRESHOLD && max_side.is_none()
+                })
+                .unwrap_or(false);
+
+            let original_preview_path = match decode_image(&validated) {
+                Ok((decoded, decode_warnings)) => {
+                    for w in decode_warnings {
+                        let Warning::DamagedInput(msg) = w;
+                        item_warnings.push(ItemWarning {
+                            code: "damaged_input".to_string(),
+                            detail: msg,
+                        });
+                    }
+                    let preview_img = downscale_if_needed(decoded, max_side);
+                    let res = preview::write_preview_image(&preview_dir, "orig", &preview_img);
+                    drop(preview_img);
+                    res.ok()
+                }
+                Err(_) => None,
+            };
+
+            let app_state = app_clone.state::<AppState>();
+            let session_opts = SessionOptions {
+                execution_provider: ep,
+                refine_level,
+                threads: rustmatte_core::session::default_thread_count(),
+            };
+
+            let result = {
+                let mut cache_guard = app_state
+                    .session_cache
+                    .lock()
+                    .map_err(|_| "Internal session lock error".to_string())?;
+                let remover = cache_guard.get_or_load(tier, session_opts)?;
+                remover
+                    .process_with_options(&validated, max_side)
+                    .map(|out| (out, remover.execution_provider().to_string()))
+                    .map_err(|e| e.to_string())
+            };
+
+            let (output, active_device) = result?;
+            for w in output.warnings {
+                let Warning::DamagedInput(msg) = w;
+                if !item_warnings
+                    .iter()
+                    .any(|existing| existing.code == "damaged_input" && existing.detail == msg)
+                {
+                    item_warnings.push(ItemWarning {
+                        code: "damaged_input".to_string(),
+                        detail: msg,
+                    });
+                }
+            }
+
+            let (width, height) = output.image.dimensions();
+            let full_dest = preview_dir.join(format!("retry_{}_{}.png", job_id, tier_str));
+            if let Some(ref hex) = bg_hex {
+                let filled = preview::composite_solid_background(&output.image, hex)?;
+                preview::write_full_png_atomic(&full_dest, &filled)?;
+            } else {
+                preview::write_full_png_atomic(&full_dest, &output.image)?;
+            }
+            let preview_dyn = image::DynamicImage::ImageRgba8(output.image);
+            let cutout_prev_path =
+                preview::write_preview_image(&preview_dir, "cutout", &preview_dyn)?;
+            drop(preview_dyn);
+
+            let status = if item_warnings.is_empty() {
+                "done"
+            } else {
+                "warning"
+            };
+
+            Ok::<JobProgressEvent, String>(JobProgressEvent {
+                job_id,
+                index: 1,
+                total: 1,
+                file: file_name,
+                input_path: validated.to_string_lossy().to_string(),
+                status: status.to_string(),
+                timing_ms: t_item.elapsed().as_secs_f64() * 1000.0,
+                inference_ms: output.timings.inference_ms,
+                warnings: item_warnings,
+                oom_warning,
+                error: None,
+                original_preview_path: original_preview_path
+                    .map(|p| p.to_string_lossy().to_string()),
+                cutout_preview_path: Some(cutout_prev_path.to_string_lossy().to_string()),
+                full_cutout_path: Some(full_dest.to_string_lossy().to_string()),
+                width,
+                height,
+                device: active_device,
+                tier: tier_str,
+                refine_level: refine_str,
+                max_side,
+            })
+        })
+        .await
+        .map_err(|e| format!("Retry task failed: {e}"));
+
+        if let Ok(mut coord) = state.job_coordinator.lock() {
+            coord.finish(job_id);
+        }
+
+        event?
+    }
+
+    #[tauri::command]
     pub fn cancel_job(state: State<'_, AppState>) -> Result<bool, String> {
         let coord = state
             .job_coordinator
@@ -1138,8 +1425,12 @@ pub fn run() {
             commands::download_model,
             commands::cancel_model_download,
             commands::delete_partial_model_download,
+            commands::verify_cached_model,
+            commands::delete_cached_model_cmd,
+            commands::open_feedback_url,
             commands::import_model_file,
             commands::process_images,
+            commands::retry_single_with_model,
             commands::cancel_job,
             commands::save_cutout_png,
             commands::save_all_cutouts,
@@ -1181,7 +1472,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_origin;
+    use super::{sanitize_origin, validate_feedback_url, FEEDBACK_ISSUES_URL};
 
     #[test]
     fn sanitize_origin_strips_paths_queries_and_credentials() {
@@ -1198,5 +1489,20 @@ mod tests {
             "http://localhost:1420"
         );
         assert_eq!(sanitize_origin("C:\\Users\\Alice\\file.html"), "unknown");
+    }
+
+    #[test]
+    fn feedback_url_allow_list_permits_only_pinned_issues_page() {
+        assert_eq!(
+            validate_feedback_url(FEEDBACK_ISSUES_URL),
+            Ok(FEEDBACK_ISSUES_URL)
+        );
+        assert!(validate_feedback_url("https://github.com/yehudaaadev/RustMatte").is_err());
+        assert!(
+            validate_feedback_url("http://github.com/yehudaaadev/RustMatte/issues/new/choose")
+                .is_err()
+        );
+        assert!(validate_feedback_url("https://evil.example/issues/new/choose").is_err());
+        assert!(validate_feedback_url("javascript:alert(1)").is_err());
     }
 }

@@ -79,6 +79,11 @@ impl SessionCache {
         matches!(slot.as_ref(), Some((cached_opts, _)) if cached_opts == options)
     }
 
+    /// Drops any cached `Remover` session for `tier`, releasing its memory and file references.
+    pub fn evict(&mut self, tier: ModelTier) {
+        *self.slot_mut(tier) = None;
+    }
+
     /// Returns a mutable reference to the cached `Remover` for `tier`, loading or reloading if options changed.
     pub fn get_or_load(
         &mut self,
