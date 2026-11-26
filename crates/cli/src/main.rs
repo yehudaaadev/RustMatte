@@ -10,20 +10,22 @@ use std::time::Instant;
 use clap::{Parser, Subcommand, ValueEnum};
 use rustmatte_core::decode::Warning;
 use rustmatte_core::model::{
-    check_model_status_with_custom, default_cache_dir, spec_for_tier, ModelSpec, ModelStatus,
+    check_model_status_with_custom, default_cache_dir, delete_cached_model, spec_for_tier,
+    ModelSpec, ModelStatus,
 };
 use rustmatte_core::session::default_thread_count;
 use rustmatte_core::{
-    download_model, extract_source_host, Config, ExecutionProvider, ModelTier, RefineConfig,
-    Remover, RgbaImage, StageTimings,
+    download_model, extract_source_host, manifest_entry_for_tier, partial_download_info, Config,
+    ExecutionProvider, ModelTier, RefineConfig, Remover, RgbaImage, StageTimings,
 };
 
 /// Model processing tier for CLI selection.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum CliTier {
-    /// High-quality tier using BiRefNet Lite 512 (default).
+    /// Balanced/Quality tier using BiRefNet Lite 512 (default).
+    #[value(alias = "balanced")]
     Quality,
-    /// Fast preview tier using U-2-Netp: best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds.
+    /// Fast tier using U-2-Netp: best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds.
     Fast,
 }
 
@@ -157,11 +159,11 @@ struct ModelsArgs {
 
 #[derive(Subcommand, Debug)]
 enum ModelsAction {
-    /// List all model tiers, local cache status, sizes, licenses, and checksum verification
+    /// List all model profiles, local cache status, sizes, licenses, and checksum verification
     List,
-    /// Download model weights to the local OS cache directory
+    /// Download model weights to the local OS cache directory (with disk check and resume)
     Download {
-        /// Model tier to download: quality (default) or fast
+        /// Model profile to download: quality/balanced (default) or fast
         #[arg(short = 't', long = "tier", default_value = "quality")]
         tier: CliTier,
 
@@ -169,6 +171,31 @@ enum ModelsAction {
         #[arg(short = 'y', long = "yes")]
         yes: bool,
     },
+    /// Delete a cached model (and any partial download) to free disk space
+    Delete {
+        /// Model profile to delete: quality/balanced or fast
+        #[arg(short = 't', long = "tier")]
+        tier: CliTier,
+
+        /// Skip confirmation prompt
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
+    },
+    /// Verify SHA-256 checksum integrity of cached model weights
+    Verify {
+        /// Optional model profile to verify (verifies all profiles if omitted)
+        #[arg(short = 't', long = "tier")]
+        tier: Option<CliTier>,
+    },
+}
+
+fn target_cache_dir() -> PathBuf {
+    std::env::var("RUSTMATTE_MODEL_DIR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_cache_dir)
 }
 
 fn prompt_user_consent(spec: &ModelSpec) -> Result<bool, String> {
@@ -249,7 +276,7 @@ fn ensure_model_available(
                 }
             }
 
-            let cache_dir = default_cache_dir();
+            let cache_dir = target_cache_dir();
             eprintln!("Starting model download...");
 
             let mut last_reported_pct: i32 = -1;
@@ -286,14 +313,16 @@ fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
     match args.action {
         ModelsAction::List => {
             let tiers = [ModelTier::Quality, ModelTier::Fast];
+            let cache_dir = target_cache_dir();
             println!(
-                "{:<8} {:<24} {:<10} {:<12} Status",
-                "Tier", "File Name", "Size", "License"
+                "{:<10} {:<18} {:<24} {:<10} {:<12} Status",
+                "Profile", "Engine", "File Name", "Size", "License"
             );
-            println!("{}", "-".repeat(80));
+            println!("{}", "-".repeat(96));
 
             for tier in tiers {
                 let spec = spec_for_tier(tier);
+                let entry = manifest_entry_for_tier(tier);
                 let size_mb = spec.expected_size as f64 / (1024.0 * 1024.0);
                 let status_str = match check_model_status_with_custom(None, tier) {
                     ModelStatus::Verified { path } => {
@@ -305,18 +334,22 @@ fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
                     ModelStatus::Missing {
                         expected_cache_path,
                     } => {
-                        format!("Not cached (expected: {})", expected_cache_path.display())
+                        if let Some(partial) = partial_download_info(spec, &cache_dir) {
+                            let part_mb = partial.bytes_downloaded as f64 / (1024.0 * 1024.0);
+                            format!(
+                                "Partial ({part_mb:.1} / {size_mb:.1} MB resumable in {})",
+                                partial.part_path.display()
+                            )
+                        } else {
+                            format!("Not cached (expected: {})", expected_cache_path.display())
+                        }
                     }
                 };
 
-                let tier_label = match tier {
-                    ModelTier::Quality => "Quality",
-                    ModelTier::Fast => "Fast",
-                };
-
                 println!(
-                    "{:<8} {:<24} {:<10} {:<12} {}",
-                    tier_label,
+                    "{:<10} {:<18} {:<24} {:<10} {:<12} {}",
+                    entry.id,
+                    entry.engine,
                     spec.default_filename,
                     format!("{size_mb:.1} MB"),
                     spec.license,
@@ -330,6 +363,92 @@ fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
             let spec = spec_for_tier(model_tier);
             ensure_model_available(spec, None, yes, false)?;
             Ok(())
+        }
+        ModelsAction::Delete { tier, yes } => {
+            let model_tier: ModelTier = tier.into();
+            let entry = manifest_entry_for_tier(model_tier);
+            let spec = spec_for_tier(model_tier);
+            if !yes {
+                if !std::io::stdin().is_terminal() {
+                    return Err(format!(
+                        "Pass '--yes' / '-y' to delete '{}' non-interactively.",
+                        spec.default_filename
+                    ));
+                }
+                eprint!(
+                    "Delete cached model '{}' ({})? [y/N]: ",
+                    entry.id, spec.default_filename
+                );
+                std::io::stderr()
+                    .flush()
+                    .map_err(|e| format!("IO error: {e}"))?;
+                let mut input = String::new();
+                std::io::stdin()
+                    .read_line(&mut input)
+                    .map_err(|e| format!("Failed to read user input: {e}"))?;
+                let trimmed = input.trim().to_ascii_lowercase();
+                if trimmed != "y" && trimmed != "yes" {
+                    return Err("Model deletion cancelled by user.".to_string());
+                }
+            }
+            match delete_cached_model(model_tier).map_err(|e| format!("Delete failed: {e}"))? {
+                Some((path, freed)) => {
+                    let freed_mb = freed as f64 / (1024.0 * 1024.0);
+                    println!("Deleted {} (freed {freed_mb:.2} MB).", path.display());
+                    Ok(())
+                }
+                None => {
+                    println!(
+                        "Model '{}' ({}) is not present in local cache.",
+                        entry.id, spec.default_filename
+                    );
+                    Ok(())
+                }
+            }
+        }
+        ModelsAction::Verify { tier } => {
+            let tiers: Vec<ModelTier> = match tier {
+                Some(t) => vec![t.into()],
+                None => vec![ModelTier::Quality, ModelTier::Fast],
+            };
+            let mut any_failed = false;
+            for t in tiers {
+                let entry = manifest_entry_for_tier(t);
+                match check_model_status_with_custom(None, t) {
+                    ModelStatus::Verified { path } => {
+                        println!("[ok] {} ({}): {}", entry.id, entry.engine, path.display());
+                    }
+                    ModelStatus::Corrupt {
+                        path,
+                        expected,
+                        actual,
+                    } => {
+                        eprintln!(
+                            "[corrupt] {} ({}): {}\n  expected={expected}\n  actual=  {actual}",
+                            entry.id,
+                            entry.engine,
+                            path.display()
+                        );
+                        any_failed = true;
+                    }
+                    ModelStatus::Missing {
+                        expected_cache_path,
+                    } => {
+                        eprintln!(
+                            "[missing] {} ({}): not found (expected {})",
+                            entry.id,
+                            entry.engine,
+                            expected_cache_path.display()
+                        );
+                        any_failed = true;
+                    }
+                }
+            }
+            if any_failed {
+                Err("One or more requested models failed verification or are missing.".to_string())
+            } else {
+                Ok(())
+            }
         }
     }
 }
@@ -710,5 +829,53 @@ mod tests {
             "auto",
         ]);
         assert_eq!(args.device, CliDevice::Auto);
+    }
+
+    #[test]
+    fn test_cli_models_subcommands_parsing() {
+        let list_cmd = Cli::parse_from(["rustmatte", "models", "list"]);
+        assert!(matches!(
+            list_cmd.command,
+            Some(Commands::Models(ModelsArgs {
+                action: ModelsAction::List
+            }))
+        ));
+
+        let dl_cmd = Cli::parse_from([
+            "rustmatte",
+            "models",
+            "download",
+            "--tier",
+            "balanced",
+            "--yes",
+        ]);
+        assert!(matches!(
+            dl_cmd.command,
+            Some(Commands::Models(ModelsArgs {
+                action: ModelsAction::Download {
+                    tier: CliTier::Quality,
+                    yes: true
+                }
+            }))
+        ));
+
+        let del_cmd = Cli::parse_from(["rustmatte", "models", "delete", "--tier", "fast", "-y"]);
+        assert!(matches!(
+            del_cmd.command,
+            Some(Commands::Models(ModelsArgs {
+                action: ModelsAction::Delete {
+                    tier: CliTier::Fast,
+                    yes: true
+                }
+            }))
+        ));
+
+        let ver_cmd = Cli::parse_from(["rustmatte", "models", "verify"]);
+        assert!(matches!(
+            ver_cmd.command,
+            Some(Commands::Models(ModelsArgs {
+                action: ModelsAction::Verify { tier: None }
+            }))
+        ));
     }
 }

@@ -4,12 +4,13 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::CoreError;
 
 /// Supported background removal model tiers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ModelTier {
     /// High-quality default model (`BiRefNet_lite_512`).
     /// Best quality on complex subjects, fine hair, and transparency.
@@ -22,7 +23,7 @@ pub enum ModelTier {
 }
 
 /// Internal classification of model output semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModelKind {
     /// BiRefNet logits output requiring sigmoid activation.
     BiRefNet,
@@ -351,4 +352,52 @@ pub fn resolve_model_path(
             tier,
         }),
     }
+}
+
+/// Deletes a cached model (and any partial download files) inside `cache_dir`, returning `(deleted_path, freed_bytes)`.
+pub fn delete_model_in_dir(
+    spec: &ModelSpec,
+    cache_dir: &Path,
+) -> Result<Option<(PathBuf, u64)>, CoreError> {
+    let target = cache_dir.join(spec.default_filename);
+    let mut freed = 0u64;
+    let mut removed_path = None;
+
+    if target.exists() {
+        let len = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+        std::fs::remove_file(&target)?;
+        freed += len;
+        removed_path = Some(target);
+    }
+
+    let part = cache_dir.join(format!(".{}.part", spec.default_filename));
+    if part.exists() {
+        let len = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let _ = std::fs::remove_file(&part);
+        freed += len;
+        if removed_path.is_none() {
+            removed_path = Some(part);
+        }
+    }
+
+    let meta = cache_dir.join(format!(".{}.part.meta.json", spec.default_filename));
+    if meta.exists() {
+        let _ = std::fs::remove_file(&meta);
+    }
+
+    Ok(removed_path.map(|p| (p, freed)))
+}
+
+/// Deletes a cached model (and partial download state) from `RUSTMATTE_MODEL_DIR` (if set) and `default_cache_dir()`.
+pub fn delete_cached_model(tier: ModelTier) -> Result<Option<(PathBuf, u64)>, CoreError> {
+    let spec = spec_for_tier(tier);
+
+    if let Ok(env_dir) = std::env::var("RUSTMATTE_MODEL_DIR") {
+        let dir = PathBuf::from(env_dir);
+        if let Some(res) = delete_model_in_dir(spec, &dir)? {
+            return Ok(Some(res));
+        }
+    }
+
+    delete_model_in_dir(spec, &default_cache_dir())
 }

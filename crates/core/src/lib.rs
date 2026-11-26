@@ -11,22 +11,42 @@ use ort::value::Tensor;
 pub mod decode;
 pub mod download;
 pub mod error;
+pub mod manifest;
 pub mod model;
 pub mod pipeline;
+pub mod recommend;
 pub mod refine;
 pub mod session;
+pub mod sysinfo;
 
 pub use decode::Warning;
-pub use download::{download_model, extract_source_host};
+pub use download::{
+    delete_partial_download, download_model, download_model_with_options, extract_source_host,
+    partial_download_info, DownloadOptions, PartialDownloadInfo,
+};
 pub use error::CoreError;
+pub use manifest::{
+    find_manifest_entry, manifest_entries, manifest_entry_for_tier, validate_manifest,
+    ActivationKind, MeasuredSpec, ModelInputSpec, ModelManifestEntry, ModelSource, ModelStatusKind,
+    ProfileTags, MANIFEST_BALANCED, MANIFEST_FAST,
+};
 pub use model::{
-    check_model_status, check_model_status_with_custom, default_cache_dir, spec_for_tier,
-    ModelSpec, ModelStatus, ModelTier,
+    check_model_status, check_model_status_with_custom, default_cache_dir, delete_cached_model,
+    spec_for_tier, ModelSpec, ModelStatus, ModelTier,
+};
+pub use recommend::{
+    recommend_model, recommend_model_with_probe, ModelRecommendation, PhotoSubject, RamAdvisory,
+    RecommendationReason, UsageFrequency, LOW_RAM_THRESHOLD_MB, MID_RAM_THRESHOLD_MB,
 };
 pub use refine::{apply_mask_with_refinement, refine_mask_guided, RefineConfig};
 pub use session::{
     create_session, create_session_with_provider, default_thread_count, ActiveExecutionProvider,
     ExecutionProvider,
+};
+pub use sysinfo::{
+    check_disk_space, check_disk_space_with, detect_available_disk_bytes,
+    detect_available_memory_mb, detect_memory_info, required_space_with_margin, DiskSpaceCheck,
+    MemoryInfo,
 };
 
 /// Configuration options for initializing the background remover engine.

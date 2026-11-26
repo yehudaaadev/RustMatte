@@ -120,6 +120,26 @@ pub enum CoreError {
         reason: String,
     },
 
+    /// Insufficient free disk space for model download (`size + 10%`).
+    #[error("Insufficient disk space in '{path}': need {required_bytes} bytes, only {available_bytes} bytes available.")]
+    InsufficientDiskSpace {
+        /// Target cache path.
+        path: PathBuf,
+        /// Required space in bytes (`model_size + 10%`).
+        required_bytes: u64,
+        /// Available space in bytes.
+        available_bytes: u64,
+    },
+
+    /// Download was cancelled by user or caller (partial `.part` retained for resume).
+    #[error(
+        "Download cancelled for '{filename}'. Partial progress was kept and can be resumed later."
+    )]
+    DownloadCancelled {
+        /// Model file name.
+        filename: String,
+    },
+
     /// Download was forbidden by configuration (--no-download).
     #[error("Model '{model_id}' is not found locally and network downloads are disabled by --no-download. Place '{filename}' in '{expected_path}' or run without --no-download.")]
     DownloadForbidden {
