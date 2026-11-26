@@ -632,17 +632,6 @@
 {/if}
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 50;
-  }
-
   .wizard-modal {
     width: min(680px, 94vw);
     max-height: 90vh;
@@ -650,138 +639,16 @@
     background: var(--bg-panel);
     color: var(--text-primary);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px;
+    border-radius: var(--radius-card);
+    padding: var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .wizard-modal h2 {
     margin: 0;
-    font-size: 18px;
-  }
-
-  .muted {
-    color: var(--text-secondary);
-    margin: 0;
-  }
-
-  .badge-pill {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-
-  .badge-pill.ok {
-    color: #2f7d5b;
-    border-color: rgba(47, 125, 91, 0.45);
-  }
-
-  button {
-    border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 8px 14px;
-    min-height: 40px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .primary-btn {
-    background: var(--accent);
-    color: #ffffff;
-  }
-
-  .primary-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  .secondary-btn {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
-    border-color: var(--border);
-  }
-
-  .text-btn {
-    background: transparent;
-    color: var(--accent);
-    padding: 4px 6px;
-    min-height: 32px;
-  }
-
-  .sm {
-    padding: 5px 10px;
-    min-height: 32px;
-    font-size: 12px;
-  }
-
-  .banner {
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 13px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-  }
-
-  .banner.error {
-    border-color: #b3412e;
-    background: rgba(179, 65, 46, 0.12);
-  }
-
-  .banner.warning {
-    border-color: #b7791f;
-    background: rgba(183, 121, 31, 0.12);
-  }
-
-  .banner.info {
-    border-color: var(--accent);
-    background: rgba(63, 94, 168, 0.12);
-  }
-
-  .banner-body p {
-    margin: 4px 0 0;
-  }
-
-  .meta-grid {
-    display: grid;
-    grid-template-columns: 130px 1fr;
-    gap: 6px 12px;
-    margin: 0;
-    font-size: 13px;
-  }
-
-  .meta-grid.compact {
-    margin-top: 6px;
-    font-size: 12px;
-  }
-
-  .meta-grid dt {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
-
-  .meta-grid dd {
-    margin: 0;
-    word-break: break-all;
+    font-size: var(--text-title);
   }
 
   .download-progress {
@@ -822,7 +689,7 @@
   }
 
   .step-dot.done {
-    background: #2f7d5b;
+    background: var(--success);
   }
 
   .wizard-briefing,
@@ -839,49 +706,50 @@
 
   .wizard-choice-card {
     padding: 14px;
-    border-radius: 10px;
+    border-radius: var(--radius-card);
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     color: var(--text-primary);
     text-align: left;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     cursor: pointer;
     min-height: 56px;
+    transition: border-color var(--transition-fast);
   }
 
   .wizard-choice-card.selected {
     border-color: var(--accent);
-    background: rgba(63, 94, 168, 0.14);
+    box-shadow: 0 0 0 1px var(--accent);
   }
 
   .wizard-fieldset {
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    padding: var(--space-3);
     margin: 0;
   }
 
   .wizard-fieldset legend {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--text-body);
     padding: 0 6px;
   }
 
   .wizard-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: var(--space-2);
     margin-top: 6px;
   }
 
   .wizard-radio-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 8px;
+    gap: var(--space-2);
+    padding: var(--space-2) 10px;
+    border-radius: var(--radius-control);
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     cursor: pointer;
@@ -908,8 +776,8 @@
 
   .model-card {
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px;
+    border-radius: var(--radius-card);
+    padding: var(--space-3);
     background: var(--bg-elevated);
     display: flex;
     flex-direction: column;
@@ -930,7 +798,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .model-badges {
@@ -957,7 +825,7 @@
 
   .model-metrics {
     display: flex;
-    gap: 12px;
+    gap: var(--space-3);
     flex-wrap: wrap;
     font-size: 12px;
     font-weight: 600;
@@ -971,8 +839,8 @@
   }
 
   .model-lists ul {
-    margin: 4px 0 0;
-    padding-left: 16px;
+    margin: var(--space-1) 0 0;
+    padding-left: var(--space-4);
   }
 
   .wizard-sublink-row {
@@ -988,8 +856,8 @@
 
   .offline-box {
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: var(--radius-control);
+    padding: var(--space-2) 10px;
     font-size: 12px;
   }
 
@@ -1002,7 +870,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
     margin-top: 6px;
   }
 
@@ -1017,16 +885,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 8px;
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
-    margin-top: 4px;
+    margin-top: var(--space-1);
   }
 
   .wizard-footer-left,
   .wizard-footer-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   @media (max-width: 600px) {

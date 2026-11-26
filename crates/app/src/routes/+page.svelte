@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "../app.css";
   import { onDestroy, onMount } from "svelte";
   import { convertFileSrc, invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -709,6 +710,21 @@
     }
   }
 
+  function statusGlyph(status: string): string {
+    switch (status) {
+      case "done":
+        return "✓";
+      case "warning":
+        return "!";
+      case "failed":
+        return "×";
+      case "processing":
+        return "…";
+      default:
+        return "•";
+    }
+  }
+
   function statusLabel(status: string): string {
     switch (status) {
       case "waiting":
@@ -949,6 +965,23 @@
       <!-- Empty Dropzone State -->
       <section class="empty-stage" aria-label={t.dropTitle}>
         <div class="dropzone-card {isDragOver ? 'drag-over' : ''}">
+          <svg
+            class="empty-icon"
+            width="44"
+            height="44"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="5" width="14" height="14" rx="2" />
+            <circle cx="8" cy="10" r="1.4" />
+            <path d="M5 17l3.5-3.5 2.5 2.5 2-2 2 3" />
+            <path d="M17 9h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-2" stroke-dasharray="2 2" />
+          </svg>
           <h2>{t.dropTitle}</h2>
           <p class="muted">{t.dropSubtitle}</p>
           <div class="drop-actions">
@@ -1032,6 +1065,7 @@
                   <div class="row-meta">
                     <span class="row-name" title={item.name}>{item.name}</span>
                     <span class="status-tag {item.status}">
+                      <span aria-hidden="true">{statusGlyph(item.status)}</span>
                       {statusLabel(item.status)}
                       {#if item.timingMs}
                         ({(item.timingMs / 1000).toFixed(2)}s)
@@ -1068,30 +1102,54 @@
 
         {#if statusBanner}
           <div class="banner info" role="status">
-            <span>{renderStatusBanner(statusBanner, t)}</span>
-            <button class="text-btn" onclick={() => (statusBanner = null)}>{t.dismissBtn}</button>
+            <div class="banner-lead">
+              <span class="banner-icon" aria-hidden="true">i</span>
+              <span>{renderStatusBanner(statusBanner, t)}</span>
+            </div>
+            <div class="banner-actions">
+              {#if (statusBanner.code === "job_done" || statusBanner.code === "saved_all") && (qState.outputDir || outputFolder)}
+                <button type="button" class="secondary-btn sm" onclick={openOutputDir}>
+                  {t.openOutputFolderBtn}
+                </button>
+              {/if}
+              <button type="button" class="text-btn" onclick={() => (statusBanner = null)}>{t.dismissBtn}</button>
+            </div>
           </div>
         {/if}
 
         {#if hasStaleResults}
           <div class="banner warning" role="status">
-            <span>{t.staleSettingsBanner}</span>
+            <div class="banner-lead">
+              <span class="banner-icon" aria-hidden="true">!</span>
+              <span>{t.staleSettingsBanner}</span>
+            </div>
+            <div class="banner-actions">
+              <button type="button" class="secondary-btn sm" onclick={runRemoveBackground}>
+                {t.reprocessBtn}
+              </button>
+            </div>
           </div>
         {/if}
 
         {#if summary.oomWarnings > 0}
           <div class="banner warning" role="status">
-            <span>{t.oomWarningBanner}</span>
+            <div class="banner-lead">
+              <span class="banner-icon" aria-hidden="true">!</span>
+              <span>{t.oomWarningBanner}</span>
+            </div>
           </div>
         {/if}
 
         {#if selectedItem && selectedItem.warnings.length > 0}
           <div class="banner warning" role="status">
-            <span>
-              {t.damagedWarningPrefix}: {selectedItem.warnings
-                .map((w) => renderWarningItem(w, t))
-                .join("; ")}
-            </span>
+            <div class="banner-lead">
+              <span class="banner-icon" aria-hidden="true">!</span>
+              <span>
+                {t.damagedWarningPrefix}: {selectedItem.warnings
+                  .map((w) => renderWarningItem(w, t))
+                  .join("; ")}
+              </span>
+            </div>
           </div>
         {/if}
 
@@ -1321,90 +1379,98 @@
       <aside class="options-sidebar" aria-label={t.optionsTitle}>
         <h2>{t.optionsTitle}</h2>
 
-        <div class="field">
-          <label for="tier-select">{t.tierLabel}</label>
-          <select id="tier-select" bind:value={selectedTier} disabled={isBusy}>
-            <option value="quality">{t.tierQualityName}</option>
-            <option value="fast">{t.tierFastName}</option>
-          </select>
+        <div class="active-model-card">
+          <div class="active-model-row">
+            <div>
+              <span class="field-label">{t.settingsActiveModelLabel}</span>
+              <strong class="active-model-name">
+                {selectedTier === "fast" ? t.cardFastTitle : t.cardBalancedTitle}
+              </strong>
+            </div>
+            <button
+              type="button"
+              class="text-btn"
+              disabled={isBusy}
+              onclick={() => (showSettingsModal = true)}
+            >
+              {t.optionsChangeModelBtn}
+            </button>
+          </div>
           <p class="field-help">
             {selectedTier === "quality" ? t.tierQualityDesc : t.tierFastDesc}
           </p>
         </div>
 
-        <div class="field">
-          <label for="refine-select">{t.refineLabel}</label>
-          <select id="refine-select" bind:value={refineLevel} disabled={isBusy}>
-            <option value="standard">{t.refineStandard}</option>
-            <option value="light">{t.refineLight}</option>
-            <option value="none">{t.refineNone}</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <div class="folder-box" role="note">{t.deviceReadOnlyLine}</div>
-        </div>
-
-        <div class="field">
-          <label for="max-side-select">{t.maxSideLabel}</label>
-          <select id="max-side-select" bind:value={maxSide} disabled={isBusy}>
-            <option value={null}>{t.maxSideOriginal}</option>
-            <option value={2048}>{t.maxSide2048}</option>
-            <option value={1024}>{t.maxSide1024}</option>
-            <option value={512}>{t.maxSide512}</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <span class="field-label">{t.backgroundLabel}</span>
-          <div class="segmented">
-            <button
-              type="button"
-              class="seg-btn {backgroundMode === 'transparent' ? 'active' : ''}"
-              onclick={() => (backgroundMode = "transparent")}
-            >
-              {t.bgTransparent}
-            </button>
-            <button
-              type="button"
-              class="seg-btn {backgroundMode === 'solid' ? 'active' : ''}"
-              onclick={() => (backgroundMode = "solid")}
-            >
-              {t.bgSolid}
-            </button>
-          </div>
-          {#if backgroundMode === "solid"}
-            <div class="color-row">
-              <label for="bg-color-picker">{t.bgColorPickerLabel}</label>
-              <input id="bg-color-picker" type="color" bind:value={backgroundHex} />
+        <details class="advanced-panel">
+          <summary>{t.advancedOptionsSummary}</summary>
+          <div class="advanced-body">
+            <div class="field">
+              <label for="refine-select">{t.refineLabel}</label>
+              <select id="refine-select" bind:value={refineLevel} disabled={isBusy}>
+                <option value="standard">{t.refineStandard}</option>
+                <option value="light">{t.refineLight}</option>
+                <option value="none">{t.refineNone}</option>
+              </select>
             </div>
-          {/if}
-        </div>
 
-        <div class="field">
-          <span class="field-label">{t.outputFolderLabel}</span>
-          <div class="folder-box" title={outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}>
-            {outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}
-          </div>
-          <div class="inline-actions">
-            <button class="secondary-btn sm" onclick={chooseOutputFolder} disabled={isBusy}>
-              {t.chooseFolder}
-            </button>
-            {#if outputFolder}
-              <button class="secondary-btn sm" onclick={() => (outputFolder = null)} disabled={isBusy}>
-                {t.resetFolder}
-              </button>
-            {/if}
-          </div>
-        </div>
+            <div class="field">
+              <label for="max-side-select">{t.maxSideLabel}</label>
+              <select id="max-side-select" bind:value={maxSide} disabled={isBusy}>
+                <option value={null}>{t.maxSideOriginal}</option>
+                <option value={2048}>{t.maxSide2048}</option>
+                <option value={1024}>{t.maxSide1024}</option>
+                <option value={512}>{t.maxSide512}</option>
+              </select>
+            </div>
 
-        <div class="field checkbox-field">
-          <label>
-            <input type="checkbox" bind:checked={neverUseNetwork} />
-            <span>{t.neverUseNetworkLabel}</span>
-          </label>
-          <p class="field-help">{t.neverUseNetworkHint}</p>
-        </div>
+            <div class="field">
+              <span class="field-label">{t.backgroundLabel}</span>
+              <div class="segmented">
+                <button
+                  type="button"
+                  class="seg-btn {backgroundMode === 'transparent' ? 'active' : ''}"
+                  onclick={() => (backgroundMode = "transparent")}
+                >
+                  {t.bgTransparent}
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn {backgroundMode === 'solid' ? 'active' : ''}"
+                  onclick={() => (backgroundMode = "solid")}
+                >
+                  {t.bgSolid}
+                </button>
+              </div>
+              {#if backgroundMode === "solid"}
+                <div class="color-row">
+                  <label for="bg-color-picker">{t.bgColorPickerLabel}</label>
+                  <input id="bg-color-picker" type="color" bind:value={backgroundHex} />
+                </div>
+              {/if}
+            </div>
+
+            <div class="field">
+              <span class="field-label">{t.outputFolderLabel}</span>
+              <div class="folder-box" title={outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}>
+                {outputFolder ? formatDisplayPath(outputFolder) : t.outputFolderAuto}
+              </div>
+              <div class="inline-actions">
+                <button class="secondary-btn sm" onclick={chooseOutputFolder} disabled={isBusy}>
+                  {t.chooseFolder}
+                </button>
+                {#if outputFolder}
+                  <button class="secondary-btn sm" onclick={() => (outputFolder = null)} disabled={isBusy}>
+                    {t.resetFolder}
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="folder-box" role="note">{t.deviceReadOnlyLine}</div>
+            </div>
+          </div>
+        </details>
 
         <div class="primary-actions">
           <button
@@ -1546,17 +1612,6 @@
 </main>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-  }
-
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    overflow: hidden;
-  }
-
   .sr-only {
     position: absolute;
     width: 1px;
@@ -1574,48 +1629,14 @@
     color: var(--text-primary);
   }
 
-  .theme-dark {
-    --bg-app: #121417;
-    --bg-panel: #1a1d22;
-    --bg-elevated: #23272e;
-    --border: #2f3540;
-    --text-primary: #f1f5f9;
-    --text-secondary: #a1aab8;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --checker-a: #1e2228;
-    --checker-b: #272c34;
-  }
-
-  .theme-light {
-    --bg-app: #f6f7f9;
-    --bg-panel: #ffffff;
-    --bg-elevated: #eef1f5;
-    --border: #d5dce4;
-    --text-primary: #14181f;
-    --text-secondary: #4e5968;
-    --accent: #1d4ed8;
-    --accent-hover: #1e40af;
-    --checker-a: #e5e7eb;
-    --checker-b: #ffffff;
-  }
-
-  button:focus-visible,
-  select:focus-visible,
-  input:focus-visible,
-  [role="slider"]:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
   .app-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
+    padding: var(--space-2) var(--space-4);
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .brand {
@@ -1627,8 +1648,9 @@
 
   .brand-title {
     margin: 0;
-    font-size: 17px;
+    font-size: var(--text-title);
     font-weight: 700;
+    line-height: 1.2;
   }
 
   .brand-subtitle {
@@ -1636,31 +1658,16 @@
     color: var(--text-secondary);
   }
 
-  .badge-pill {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-
-  .badge-pill.ok {
-    color: #16a34a;
-    border-color: rgba(22, 163, 74, 0.4);
-  }
-
   .warn-btn {
-    color: #d97706;
-    border-color: rgba(217, 119, 6, 0.5);
+    color: var(--warning);
+    border-color: var(--warning);
     cursor: pointer;
   }
 
   .header-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   select,
@@ -1668,8 +1675,8 @@
     background: var(--bg-elevated);
     color: var(--text-primary);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 8px;
+    border-radius: var(--radius-control);
+    padding: 6px var(--space-2);
     font-size: 13px;
   }
 
@@ -1685,27 +1692,38 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    gap: 16px;
+    padding: var(--space-5);
+    gap: var(--space-4);
   }
 
   .dropzone-card {
     width: min(640px, 92%);
-    padding: 48px 32px;
+    padding: var(--space-6) var(--space-5);
     border: 2px dashed var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     background: var(--bg-panel);
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
+    transition: border-color var(--transition-fast);
+  }
+
+  .empty-icon {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .dropzone-card h2 {
+    margin: 0;
+    font-size: var(--text-title);
   }
 
   .dropzone-card.drag-over,
   .center-stage.drag-over {
     border-color: var(--accent);
-    background: rgba(37, 99, 235, 0.08);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
   .drop-actions {
@@ -1719,7 +1737,7 @@
   .shortcut-note {
     font-size: 12px;
     color: var(--text-secondary);
-    margin: 4px 0 0;
+    margin: var(--space-1) 0 0;
   }
 
   .queue-sidebar {
@@ -1735,7 +1753,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
+    padding: 10px var(--space-3);
     border-bottom: 1px solid var(--border);
   }
 
@@ -1747,7 +1765,7 @@
 
   .panel-header-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .queue-scroll {
@@ -1781,10 +1799,11 @@
     gap: 10px;
     text-align: left;
     cursor: pointer;
+    transition: background-color var(--transition-fast);
   }
 
   .queue-row.selected {
-    background: rgba(37, 99, 235, 0.14);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
   }
 
   .thumb-box {
@@ -1828,15 +1847,15 @@
   }
 
   .status-tag.done {
-    color: #16a34a;
+    color: var(--success);
   }
 
   .status-tag.warning {
-    color: #d97706;
+    color: var(--warning);
   }
 
   .status-tag.failed {
-    color: #dc2626;
+    color: var(--error);
   }
 
   .center-stage {
@@ -1844,18 +1863,18 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    padding: 12px;
+    padding: var(--space-3);
     gap: 10px;
   }
 
   .progress-bar-box {
     background: var(--bg-panel);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: var(--radius-card);
+    padding: 10px var(--space-3);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .progress-text {
@@ -1870,39 +1889,8 @@
     height: 8px;
   }
 
-  .banner {
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 13px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid var(--border);
-    background: var(--bg-panel);
-  }
-
-  .banner.error {
-    border-color: #dc2626;
-    background: rgba(220, 38, 38, 0.12);
-  }
-
-  .banner.warning {
-    border-color: #d97706;
-    background: rgba(217, 119, 6, 0.12);
-  }
-
-  .banner.info {
-    border-color: var(--accent);
-    background: rgba(37, 99, 235, 0.12);
-  }
-
-  .banner-body p {
-    margin: 4px 0;
-  }
-
   .compact-list {
-    margin: 4px 0 0;
+    margin: var(--space-1) 0 0;
     padding-left: 18px;
     font-size: 12px;
   }
@@ -1911,7 +1899,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .zoom-controls {
@@ -1924,7 +1912,7 @@
   .model-switch-group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .side-by-side-grid {
@@ -1938,7 +1926,7 @@
   .side-pane {
     position: relative;
     border: 2px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     overflow: hidden;
     padding: 0;
     cursor: pointer;
@@ -1970,7 +1958,7 @@
     flex: 1;
     min-height: 240px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-card);
     overflow: hidden;
     user-select: none;
     display: flex;
@@ -2035,7 +2023,7 @@
     padding: 4px 6px;
     border-radius: 999px;
     background: var(--accent);
-    color: #ffffff;
+    color: var(--accent-text);
     font-size: 11px;
     font-weight: 700;
   }
@@ -2075,22 +2063,22 @@
 
   .stats-bar {
     display: flex;
-    gap: 16px;
+    gap: var(--space-4);
     flex-wrap: wrap;
     font-size: 12px;
     color: var(--text-secondary);
-    padding: 4px 2px;
+    padding: var(--space-1) 2px;
   }
 
   .preview-placeholder {
     flex: 1;
     border: 1px dashed var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-card);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: var(--space-5);
     text-align: center;
   }
 
@@ -2098,16 +2086,58 @@
     width: 300px;
     background: var(--bg-panel);
     border-left: 1px solid var(--border);
-    padding: 12px 14px;
+    padding: var(--space-3) 14px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .options-sidebar h2 {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-body);
+  }
+
+  .active-model-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .active-model-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .active-model-name {
+    display: block;
+    font-size: var(--text-body);
+    margin-top: 2px;
+  }
+
+  .advanced-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .advanced-panel summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   .field {
@@ -2122,8 +2152,7 @@
     font-weight: 600;
   }
 
-  .field-help,
-  .muted {
+  .field-help {
     margin: 0;
     font-size: 12px;
     color: var(--text-secondary);
@@ -2141,18 +2170,19 @@
 
   .seg-btn {
     flex: 1;
-    padding: 6px 8px;
+    padding: 6px var(--space-2);
     font-size: 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     color: var(--text-primary);
     cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
   }
 
   .seg-btn.active {
     background: var(--accent);
-    color: #ffffff;
+    color: var(--accent-text);
     border-color: var(--accent);
   }
 
@@ -2160,19 +2190,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-top: 4px;
-  }
-
-  .folder-box {
-    font-size: 11px;
-    color: var(--text-secondary);
-    padding: 6px 8px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
   }
 
   .inline-actions {
@@ -2180,118 +2199,27 @@
     gap: 6px;
   }
 
-  .checkbox-field label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-
   .primary-actions {
     margin-top: auto;
-    padding-top: 8px;
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .save-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .save-row button {
     flex: 1;
   }
 
-  .primary-btn,
-  .secondary-btn,
-  .text-btn {
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    padding: 8px 12px;
-    border: 1px solid transparent;
-  }
-
-  .primary-btn {
-    background: var(--accent);
-    color: #ffffff;
-  }
-
-  .primary-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  .secondary-btn {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
-    border-color: var(--border);
-  }
-
-  .text-btn {
-    background: transparent;
-    color: var(--accent);
-    padding: 4px 6px;
-  }
-
-  .sm {
-    padding: 5px 9px;
-    font-size: 12px;
-  }
-
-  .full {
-    width: 100%;
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 50;
-  }
-
-  .modal {
-    width: min(540px, 100%);
-    max-height: 88vh;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .modal-lg {
-    width: min(760px, 100%);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .modal h2 {
-    margin: 0;
-    font-size: 16px;
-  }
-
   .modal-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
@@ -2300,7 +2228,7 @@
   .about-scroll {
     overflow-y: auto;
     max-height: 60vh;
-    padding-right: 4px;
+    padding-right: var(--space-1);
     font-size: 13px;
   }
 
@@ -2310,14 +2238,7 @@
     font-size: 11px;
     background: var(--bg-elevated);
     padding: 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     border: 1px solid var(--border);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      animation: none !important;
-      transition: none !important;
-    }
   }
 </style>

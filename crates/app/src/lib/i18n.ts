@@ -277,6 +277,9 @@ export interface Translations {
   retrySingleViewBtn: string;
   retryFurSuggestionBanner: string;
   retryTryBalancedBtn: string;
+  optionsChangeModelBtn: string;
+  advancedOptionsSummary: string;
+  reprocessBtn: string;
 }
 
 export const dictionaries: Record<Lang, Translations> = {
@@ -576,6 +579,9 @@ export const dictionaries: Record<Lang, Translations> = {
     retrySingleViewBtn: "Single result view",
     retryFurSuggestionBanner: "Photo processed with Fast. For finer hair or fur edges, try Balanced.",
     retryTryBalancedBtn: "Retry with Balanced",
+    optionsChangeModelBtn: "Change",
+    advancedOptionsSummary: "Advanced options",
+    reprocessBtn: "Reprocess",
   },
   id: {
     appTitle: "RustMatte",
@@ -874,5 +880,8 @@ export const dictionaries: Record<Lang, Translations> = {
     retrySingleViewBtn: "Tampilan satu hasil",
     retryFurSuggestionBanner: "Foto diproses dengan Cepat. Untuk tepi rambut atau bulu yang lebih halus, coba Seimbang.",
     retryTryBalancedBtn: "Coba ulang pakai Seimbang",
+    optionsChangeModelBtn: "Ubah",
+    advancedOptionsSummary: "Opsi lanjutan",
+    reprocessBtn: "Proses ulang",
   },
 };
