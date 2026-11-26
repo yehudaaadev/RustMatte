@@ -108,6 +108,34 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Full Rust/npm quality gate + `npx tauri build --bundles nsis` + offline launch check pass cleanly. Verified.
 - [x] Pre-push final fixes (`D-031`): migrate saved `"auto"` -> `"cpu"` on load and show read-only CPU processing line in UI, move release `custom-protocol` `compile_error!` to `main.rs` so `cargo test --release --workspace` passes, publish and verify public `models-v1` GitHub Release assets (`HTTP 200`, matching SHA-256) with `huggingface.co` fallback, verify 24-pair refine parity (`MaxA = 1`, `%>2 = 0.00%`) + `large_24mp` 128-row seams + 100%-zoom visual crops on saturated green/blue backgrounds (`207ef8d` vs `HEAD`), tighten `README.md` comparison claims, and fix `.github/workflows/release.yml` macOS `.app` binary discovery + `ubuntu-24.04` Linux runner.
   - Acceptance criterion: Full quality gate, `cargo test --release -j 2 --workspace`, `npx tauri build --bundles nsis`, and offline launch `startup.log` check pass cleanly. Verified.
+- [x] Post-inspection quality, UI tracking, storage cleanup, and candidate benchmark (`D-032`): upgrade `refine.rs` to banded 3-channel RGB Color Guided Filter + 6-pass wavefront defringing, track active `tier`/`refine_level`/`max_side` across `JobProgressEvent`/`QueueItem`/`stats-bar` with `startJob` reset and stale-settings warning banner, clean ~6.9 GB unused build/model/cache artifacts, benchmark `BEN2 FP32` + `InSPyReNet` candidates, and export 3 comparison folders in `Downloads`.
+  - Acceptance criterion: `cargo fmt --all -- --check`, `cargo clippy --release --workspace --all-targets --features rustmatte-app/custom-protocol -q -- -D warnings`, `cargo build --release --workspace --features rustmatte-app/custom-protocol -q`, `cargo test --release --workspace --features rustmatte-app/custom-protocol -q` (`47 passed, 0 failed, 2 ignored`), `npm test` (`6/6`), `npm run check` (`0` errors/`0` warnings), `npm run build`, and 12-photo Downloads comparison export pass; owner model selection & manual desktop verification pending.
+
+## Phase 5.0: D-032 Close-Out and PRD v2 Adoption (`PRD_V2.md`)
+- [x] Adopt `PRD_V2.md` (`Status: accepted`), record `D-033`/`D-034` in `docs/DECISIONS.md`, add v2 changelog entry in `docs/PRD.md`, add Phases `5.0`–`5D` in `docs/TASKS.md`, and remove temporary `ben2_fp32.onnx` from scratch.
+  - Acceptance criterion: Documentation synchronized and scratch `ben2_fp32.onnx` deleted. Verified.
+- [x] Audit `crates/core/src/refine.rs`: align foreground early-exit threshold (`m < 243` matching `p >= 0.95`), verify 128-row multi-band vs full-frame parity (`max_diff <= 1` LSB) and seam checks, audit `q <= 0.06` hair/whisker haze suppression (`0.00%` loss of `raw > 36` pixels across `rambut1`/`rambut2`/`hewan1`/`hewan2`), re-measure 24 MP release single-process peak RAM/time (`2,191.39 MB` Balanced / `498.96 MB` Fast), and regenerate clean 12-fixture comparison folders in `Downloads`.
+  - Acceptance criterion: Full Rust + npm quality gate passes (`50` Rust tests passed / `2` ignored, `6/6` npm tests, `0` clippy/svelte-check warnings, `cargo deny` clean), 24 MP peak Working Set meets `PRD_V2.md` Section 9 targets, and `Downloads\Quality Model` + `Downloads\fast model` pass `12/12` distinct SHA-256 verification; changes committed locally (`D-032`..`D-034`). Verified.
+
+## Phase 5A: Manifest, Resumable Model Manager, RAM Detection, and Recommendation Engine
+- [ ] Implement manifest data & validation in `crates/core`, resumable HTTP Range downloader with `.part` + metadata and 10% disk-space check, local available-RAM detection (evaluate >= 2 candidate crates via `license-check`), pure recommendation function (`PRD_V2.md` §7.4 table + RAM thresholds), and `rustmatte models list|download|delete|verify` CLI support.
+  - Acceptance criterion: All CI tests pass without model files (recommendation rows, RAM cases, local test server 206/200/truncated/oversized/wrong-hash resume, disk-space checks), real downloads verified from both sources, and RAM thresholds re-validated.
+
+## Phase 5B: Mandatory Bilingual First-Run Setup Wizard
+- [ ] Implement 5-step mandatory keyboard-operable guided setup wizard (`language`, `briefing + 2 questions`, `recommendation`, `download/offline import`, `ready`) with wizard state machine, EN/ID dictionaries, and measured model cards (`Fast` / `Balanced`).
+  - Acceptance criterion: Wizard state machine & i18n tests pass; wizard cannot be skipped and completes only with a verified model.
+
+## Phase 5C: Settings, Model Management, Feedback Link, and Retry With Another Model
+- [ ] Implement Settings screen (language, theme, model list/delete/verify/download + re-run wizard, network switch, output defaults, collapsed Advanced, copy diagnostic info), allow-listed GitHub Issues feedback link (`PRD_V2.md` §7.8), and per-photo `Retry with another model` side-by-side comparison (`PRD_V2.md` §7.9).
+  - Acceptance criterion: Feedback URL allow-list and settings tests pass; owner verifies Settings actions and retry flow manually.
+
+## Phase 5D: Visual Polish (`PRD_V2.md` §8 & §7.10)
+- [ ] Apply design tokens (light/dark palette verified for WCAG AA 4.5:1 contrast, spacing, radii, system fonts, reduced motion), collapsed Advanced controls on main screen, friendly empty/error states, and consistent action placement.
+  - Acceptance criterion: Quality gate passes and owner approves screenshots in both themes and both languages.
+
+## Release Readiness (`v1.0`, `PRD_V2.md` §14)
+- [ ] Resolve `TODO(owner)` / portrait fixtures in `tests/fixtures/PROVENANCE.md`, replace placeholder Tauri/Svelte brand icons, capture `docs/screenshots/` + README GIF, apply GitHub repository settings/labels/branch protection, test Windows installer offline on a clean second PC, and publish verified release.
+  - Acceptance criterion: Section 14 checklist complete and owner publishes release.
 
 ---
 

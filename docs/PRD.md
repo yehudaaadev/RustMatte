@@ -347,6 +347,8 @@ Do not chase all platforms at once. A rock-solid Windows desktop v1.0 beats five
 
 ## 18. Changelog of this PRD
 
+- **2026-11-26 (v2.0)**:
+  - Continued in [PRD_V2.md](../PRD_V2.md) (Status: `accepted`): defines mandatory 5-step guided setup wizard, final v1.0 model profiles (`Cepat / Fast` = `U-2-Netp`, `Seimbang / Balanced` = `BiRefNet Lite 512`, deferring `BEN2` to `v1.1`), resumable downloads with disk-space check, local RAM detection, pure recommendation engine, Settings, allow-listed GitHub Issues feedback link, per-photo retry with another model, UI design system tokens, and Phases `5.0`–`5D`.
 - **2026-11-24 (v1.1)**:
   - Model: Rejected RMBG-2.0 due to CC BY-NC 4.0 license restricting commercial use by target users (sellers/photographers). Removed incorrect size claims (actual: ~234MB q4f16 to ~1GB fp32). Established `BiRefNet_lite` (MIT) and `ISNet` as primary candidates to be benchmarked on CPU in Phase 1 before owner selection. Added supply-chain verification for ONNX exports.
   - License: Rejected PolyForm Noncommercial (not open source, forbids commercial use). Set project license decision to PENDING without generating a LICENSE file.

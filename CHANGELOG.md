@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+### Improved & Fixed
+- Adopted `PRD_V2.md` (`Status: accepted`, `D-033`) locking `v1.0` profiles to `Fast` (`u2netp`) and `Balanced` (`birefnet_lite_512`) while deferring `BEN2` to `v1.1`, and completed Phase 5.0 close-out (`D-034`: aligned `refine_mask_guided` foreground early-exit to `m < 243`, added multi-band full-frame parity tests, audited `q <= 0.06` hair/whisker haze retention, and re-verified 24 MP peak RAM at `2,191.39 MB` Balanced / `498.96 MB` Fast).
+- Upgraded edge refinement (`crates/core/src/refine.rs`) to a banded 3-channel RGB Color Guided Filter with low-confidence haze suppression and 6-pass wavefront foreground color decontamination, eliminating color halos on isoluminant and high-contrast backgrounds (`D-032`).
+- Added processed model/refinement tracking (`JobProgressEvent`, `QueueItem`, `stats-bar`), stale-result reset on `startJob`, and localized EN/ID warnings when tier/refine/resolution settings change after processing (`D-032`).
 - Published pinned ONNX weights (`birefnet_lite_512.onnx` and `u2netp.onnx`) to GitHub Release `models-v1` (verified public `200 OK` and SHA-256) with `huggingface.co` retained as automatic fallback (`D-031`).
 - Migrated saved `"auto"` device settings to `"cpu"` on load and replaced `#device-select` with a read-only localized CPU processing status line (`D-030`, `D-031`).
 - Moved the release `custom-protocol` `compile_error!` guard from `lib.rs` to `crates/app/src-tauri/src/main.rs` so `cargo test --release --workspace` succeeds while `cargo build --release` still blocks `devUrl` release binaries (`D-031`).
