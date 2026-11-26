@@ -16,7 +16,7 @@ ort = { version = "=2.0.0-rc.15", features = ["download-binaries", "copy-dylibs"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 ndarray = "0.17.2"
 thiserror = "2.0.21"
-sha2 = "0.10.8"
+sha2 = "0.11.1"
 ureq = { version = "=2.10.1", default-features = false, features = ["tls", "gzip"] }
 dirs = "=6.0.0"
 serde = { version = "=1.0.229", features = ["derive"] }
