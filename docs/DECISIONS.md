@@ -257,6 +257,13 @@ Format:
 - Reason: Enforces `PRD_V2.md` §4 & §7.5–7.6 (no skip button, restarts from Step 1 if closed mid-way, completes only after a verified model is installed, exposes measured model cards and offline SHA-256 copyable import instructions), while delegating `system_ram_mb()` to `rustmatte_core::detect_memory_info()` so RAM probing is maintained in one place.
 - Alternatives considered: Storing wizard answers in `settings.json` (rejected by `PRD_V2.md` §4.10 privacy boundary), keeping the old skip-capable first-run modal alongside the wizard (creates inconsistent onboarding).
 
+### D-037: Phase 5C Settings Modal, Allow-Listed Feedback Link, and Session-Scoped Model Retry
+- Date: 2026-11-26
+- Decision: Add a dedicated Settings modal (`SettingsModal.svelte`) with model management (`verify_cached_model`, `delete_cached_model_cmd` evicting `SessionCache` before deletion, re-run wizard, download/import), collapsed Advanced controls, allow-listed feedback URL launcher (`open_feedback_url` opening `https://github.com/yehudaaadev/RustMatte/issues/new/choose` via OS default handler without `tauri-plugin-shell` or `tauri-plugin-opener`, validated by `validate_feedback_url`), and per-photo `retry_single_with_model` storing session-scoped `resultsByTier` in `queue.ts` for side-by-side and active-result switching.
+- Status: accepted
+- Reason: Satisfies `PRD_V2.md` §7.7–7.9 and §9 security constraints (no new plugins or capabilities in `capabilities/default.json`), preserves batch queue results when retrying a single photo, and prevents stale ORT file handles on Windows when deleting cached weights.
+- Alternatives considered: Adding `tauri-plugin-opener` (unnecessary capability expansion forbidden by `PRD_V2.md` §7.8/§9), overwriting `QueueItem` previews on retry without `resultsByTier` (prevents side-by-side comparison of Fast vs Balanced).
+
 ---
 
 ## Superseded Decisions

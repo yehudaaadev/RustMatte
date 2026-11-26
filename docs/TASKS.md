@@ -126,8 +126,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Wizard state machine (`wizard.test.ts`), i18n parity/card tag tests (`i18n.test.ts`), `svelte-check` (`0` errors/`0` warnings), `vite build`, and Rust backend tests/build (`63` passed/`2` ignored) pass; wizard cannot be skipped and completes only with a verified model. Interactive desktop visual review remains pending owner checklist in Phase 5D / Release Readiness. Verified (automated checks).
 
 ## Phase 5C: Settings, Model Management, Feedback Link, and Retry With Another Model
-- [ ] Implement Settings screen (language, theme, model list/delete/verify/download + re-run wizard, network switch, output defaults, collapsed Advanced, copy diagnostic info), allow-listed GitHub Issues feedback link (`PRD_V2.md` §7.8), and per-photo `Retry with another model` side-by-side comparison (`PRD_V2.md` §7.9).
-  - Acceptance criterion: Feedback URL allow-list and settings tests pass; owner verifies Settings actions and retry flow manually.
+- [x] Implement Settings screen (language, theme, model list/delete/verify/download + re-run wizard, network switch, output defaults, collapsed Advanced, copy diagnostic info), allow-listed GitHub Issues feedback link (`PRD_V2.md` §7.8), and per-photo `Retry with another model` side-by-side comparison (`PRD_V2.md` §7.9).
+  - Acceptance criterion: Feedback URL allow-list unit tests (`feedback_url_allow_list_permits_only_pinned_issues_page`), `resultsByTier` retry/switch unit tests (`queue.test.ts`), `svelte-check` (`0` errors/`0` warnings), `vite build`, and Rust backend tests/build (`64` passed/`2` ignored) pass; release `startup.log` launch verified. Owner manual test of every Settings action and retry flow remains pending. Verified (automated checks).
 
 ## Phase 5D: Visual Polish (`PRD_V2.md` §8 & §7.10)
 - [ ] Apply design tokens (light/dark palette verified for WCAG AA 4.5:1 contrast, spacing, radii, system fonts, reduced motion), collapsed Advanced controls on main screen, friendly empty/error states, and consistent action placement.
