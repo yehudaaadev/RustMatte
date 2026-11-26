@@ -16,7 +16,7 @@ Completed **Phase 5D** (`PRD_V2.md` §8 & §7.10) code, styles, contrast audit, 
 
 ## Done
 - Phase 0 through Phase 4 + Pre-Release Fixes + UI Polish + Pre-Push Final Fixes (`D-028`..`D-031`) + `models-v1` release + `v0.1.0-rc4` multi-OS CI/Release verification + `D-032` refinement/UI tracking + `PRD_V2.md` adoption & **Phase 5.0** (`D-033`..`D-034`) + **Phase 5A** (`D-035`) + **Phase 5B** (`D-036`) + **Phase 5C** (`D-037`) + **Phase 5D** (`D-038`).
-- Note: Local `main` contains unpushed commits. Never push/tag/publish without explicit owner approval.
+- All 10 commits (`62ed9ec`..`58d4971`) successfully pushed to `origin/main`. Working tree clean.
 
 ## In Progress
 - Interactive visual/screenshot review of Phase 5D desktop UI (both themes and languages) before Release Readiness.
