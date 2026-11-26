@@ -4,7 +4,7 @@
 
 Offline, privacy-first AI background remover for desktop and CLI, built with a Rust core and ONNX Runtime.
 
-Status: **v0.1.0 pre-release** (Windows desktop app & CLI tested locally; macOS and Linux builds are experimental and CI-verified only).
+Status: **v1.0.0** (Windows desktop app & CLI tested locally; macOS and Linux builds are experimental and CI-verified only).
 
 Built with Rust. Not affiliated with or endorsed by the Rust Foundation.
 

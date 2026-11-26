@@ -1,6 +1,6 @@
 {
   "name": "cratesapp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "RustMatte Desktop Application",
   "type": "module",
   "scripts": {
@@ -11,8 +11,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "node --test tests/*.test.ts",
-    "license-check": "license-checker-rseidelsohn --production --excludePackages \"cratesapp@0.1.0\" --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0\"",
-    "license-check:all": "license-checker-rseidelsohn --excludePackages \"cratesapp@0.1.0\" --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;MPL-2.0;BlueOak-1.0.0;CC-BY-3.0;(MIT AND CC-BY-3.0)\"",
+    "license-check": "license-checker-rseidelsohn --production --excludePackages \"cratesapp@1.0.0\" --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0\"",
+    "license-check:all": "license-checker-rseidelsohn --excludePackages \"cratesapp@1.0.0\" --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;MPL-2.0;BlueOak-1.0.0;CC-BY-3.0;(MIT AND CC-BY-3.0)\"",
     "tauri": "tauri"
   },
   "license": "GPL-3.0-or-later",
