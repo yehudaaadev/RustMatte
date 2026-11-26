@@ -250,6 +250,13 @@ Format:
 - Reason: `sysinfo` (`0.40.4`) reads actual available memory across Windows/macOS/Linux under an `MIT` license already permitted by `deny.toml`, supports disk free-space probing in the same single dependency with `network`/`component`/`gpu`/`user` disabled, and avoids `systemstat` (`Unlicense` outside `deny.toml` allow-list, reads `MemFree` on Linux) and `sys-info` (requires C compiler via `cc`, less active maintenance).
 - Alternatives considered: `sys-info = "0.9.1"` (requires `cc` C build step and lacks per-path disk mount matching), `systemstat = "0.2.8"` (`Unlicense` not in `deny.toml`), adding a separate `toml` parser crate for manifest loading (unnecessary dependency when static typed entries satisfy §7.1 validation).
 
+### D-036: Phase 5B Mandatory 5-Step Guided Setup Wizard and Non-Persistent Privacy Boundary
+- Date: 2026-11-26
+- Decision: Replace the single-screen `firstRunModal` with the mandatory 5-step bilingual setup wizard (`crates/app/src/lib/wizard.ts` + `SetupWizard.svelte`) backed by `get_manifest_models`, `recommend_setup_model`, `cancel_model_download`, and `delete_partial_model_download` in `crates/app/src-tauri/src/lib.rs`, plus `wizard_completed` / `wizard_version` in `settings.rs`. Wizard answers (`usage`, `photo_type`) and `available_ram_mb` remain strictly in-memory for the session and are never persisted or transmitted.
+- Status: accepted
+- Reason: Enforces `PRD_V2.md` §4 & §7.5–7.6 (no skip button, restarts from Step 1 if closed mid-way, completes only after a verified model is installed, exposes measured model cards and offline SHA-256 copyable import instructions), while delegating `system_ram_mb()` to `rustmatte_core::detect_memory_info()` so RAM probing is maintained in one place.
+- Alternatives considered: Storing wizard answers in `settings.json` (rejected by `PRD_V2.md` §4.10 privacy boundary), keeping the old skip-capable first-run modal alongside the wizard (creates inconsistent onboarding).
+
 ---
 
 ## Superseded Decisions

@@ -122,8 +122,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: All CI tests pass without model files (recommendation rows, RAM cases, local test server 206/200/truncated/oversized/wrong-hash resume, cancel/delete partial, disk-space checks), real downloads of both `fast` and `balanced` verified against both `github-release` and `huggingface.co` mirrors (`models download`/`verify`/`delete`), and RAM thresholds (`3072 MB` / `5120 MB`) re-validated against 24 MP Balanced (`2,191.39 MB` Peak WS). Verified.
 
 ## Phase 5B: Mandatory Bilingual First-Run Setup Wizard
-- [ ] Implement 5-step mandatory keyboard-operable guided setup wizard (`language`, `briefing + 2 questions`, `recommendation`, `download/offline import`, `ready`) with wizard state machine, EN/ID dictionaries, and measured model cards (`Fast` / `Balanced`).
-  - Acceptance criterion: Wizard state machine & i18n tests pass; wizard cannot be skipped and completes only with a verified model.
+- [x] Implement 5-step mandatory keyboard-operable guided setup wizard (`language`, `briefing + 2 questions`, `recommendation`, `download/offline import`, `ready`) with wizard state machine, EN/ID dictionaries, and measured model cards (`Fast` / `Balanced`).
+  - Acceptance criterion: Wizard state machine (`wizard.test.ts`), i18n parity/card tag tests (`i18n.test.ts`), `svelte-check` (`0` errors/`0` warnings), `vite build`, and Rust backend tests/build (`63` passed/`2` ignored) pass; wizard cannot be skipped and completes only with a verified model. Interactive desktop visual review remains pending owner checklist in Phase 5D / Release Readiness. Verified (automated checks).
 
 ## Phase 5C: Settings, Model Management, Feedback Link, and Retry With Another Model
 - [ ] Implement Settings screen (language, theme, model list/delete/verify/download + re-run wizard, network switch, output defaults, collapsed Advanced, copy diagnostic info), allow-listed GitHub Issues feedback link (`PRD_V2.md` §7.8), and per-photo `Retry with another model` side-by-side comparison (`PRD_V2.md` §7.9).
