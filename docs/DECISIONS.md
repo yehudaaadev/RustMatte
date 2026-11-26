@@ -264,6 +264,13 @@ Format:
 - Reason: Satisfies `PRD_V2.md` §7.7–7.9 and §9 security constraints (no new plugins or capabilities in `capabilities/default.json`), preserves batch queue results when retrying a single photo, and prevents stale ORT file handles on Windows when deleting cached weights.
 - Alternatives considered: Adding `tauri-plugin-opener` (unnecessary capability expansion forbidden by `PRD_V2.md` §7.8/§9), overwriting `QueueItem` previews on retry without `resultsByTier` (prevents side-by-side comparison of Fast vs Balanced).
 
+### D-038: Phase 5D Visual Polish, WCAG AA Tokens, and Collapsed Advanced Controls
+- Date: 2026-11-26
+- Decision: Adopt unified semantic design tokens (`crates/app/src/app.css`), WCAG AA compliant Light/Dark contrast pairings (`wcag_check.py`), collapsed Advanced controls on main screen, inline SVG empty state dropzone, active-model indicator card, and non-color status glyphs (`PRD_V2.md` §8 & §7.10).
+- Status: accepted
+- Reason: Enforces strict WCAG AA contrast (minimum 4.5:1 text/control contrast; tuned Light `--warning` to `#945F0F` achieving 5.02:1 / 5.38:1 and Dark `--accent-text` to `#15181D` achieving 6.29:1), eliminates CSS duplication across modal components, provides zero-clutter empty dropzone, hides technical settings behind collapsed `<details class="advanced-panel">` to keep the main window clean for non-technical users, and supports `@media (prefers-reduced-motion: reduce)` and `@media (forced-colors: active)`.
+- Alternatives considered: Using Tailwind CSS (adds build dependencies and runtime complexity; rejected per `PRD_V2.md` §8.3 / D-011), leaving duplicate styles in Svelte components (creates style drift and inconsistent radii/spacing).
+
 ---
 
 ## Superseded Decisions

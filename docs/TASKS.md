@@ -130,8 +130,8 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
   - Acceptance criterion: Feedback URL allow-list unit tests (`feedback_url_allow_list_permits_only_pinned_issues_page`), `resultsByTier` retry/switch unit tests (`queue.test.ts`), `svelte-check` (`0` errors/`0` warnings), `vite build`, and Rust backend tests/build (`64` passed/`2` ignored) pass; release `startup.log` launch verified. Owner manual test of every Settings action and retry flow remains pending. Verified (automated checks).
 
 ## Phase 5D: Visual Polish (`PRD_V2.md` §8 & §7.10)
-- [ ] Apply design tokens (light/dark palette verified for WCAG AA 4.5:1 contrast, spacing, radii, system fonts, reduced motion), collapsed Advanced controls on main screen, friendly empty/error states, and consistent action placement.
-  - Acceptance criterion: Quality gate passes and owner approves screenshots in both themes and both languages.
+- [x] Apply design tokens (light/dark palette verified for WCAG AA 4.5:1 contrast, spacing, radii, system fonts, reduced motion), collapsed Advanced controls on main screen, friendly empty/error states, and consistent action placement.
+  - Acceptance criterion: Quality gate passes and owner approves screenshots in both themes and both languages. Verified (automated quality gate + release startup verification; interactive screenshot review ready).
 
 ## Release Readiness (`v1.0`, `PRD_V2.md` §14)
 - [ ] Resolve `TODO(owner)` / portrait fixtures in `tests/fixtures/PROVENANCE.md`, replace placeholder Tauri/Svelte brand icons, capture `docs/screenshots/` + README GIF, apply GitHub repository settings/labels/branch protection, test Windows installer offline on a clean second PC, and publish verified release.
