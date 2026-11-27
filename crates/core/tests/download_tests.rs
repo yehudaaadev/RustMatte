@@ -98,6 +98,38 @@ fn test_lookup_order_missing_reports_expected_cache_path() {
     );
 }
 
+fn read_http_request(stream: &mut std::net::TcpStream) -> String {
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let mut req_buf = [0u8; 4096];
+    let mut n = 0usize;
+    while n < req_buf.len() {
+        match stream.read(&mut req_buf[n..]) {
+            Ok(0) => break,
+            Ok(read_bytes) => {
+                n += read_bytes;
+                if req_buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&req_buf[..n]).into_owned()
+}
+
+fn finish_http_response(stream: &mut std::net::TcpStream) {
+    let _ = stream.flush();
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(200)));
+    let mut drain = [0u8; 128];
+    while let Ok(n) = stream.read(&mut drain) {
+        if n == 0 {
+            break;
+        }
+    }
+}
+
 // Spawns a lightweight local HTTP mock server for the duration of a test
 fn spawn_mock_server(
     response_header: &'static str,
@@ -120,18 +152,10 @@ fn spawn_mock_server(
             }
             match listener.accept() {
                 Ok((mut stream, _)) => {
-                    let mut req_buf = [0u8; 1024];
-                    let _ = stream.read(&mut req_buf);
+                    let _ = read_http_request(&mut stream);
                     let _ = stream.write_all(response_header.as_bytes());
                     let _ = stream.write_all(&response_body);
-                    let _ = stream.flush();
-                    let _ = stream.shutdown(std::net::Shutdown::Write);
-                    let mut drain = [0u8; 128];
-                    while let Ok(n) = stream.read(&mut drain) {
-                        if n == 0 {
-                            break;
-                        }
-                    }
+                    finish_http_response(&mut stream);
                     break;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -456,9 +480,7 @@ fn spawn_range_aware_server(
             }
             match listener.accept() {
                 Ok((mut stream, _)) => {
-                    let mut req_buf = [0u8; 2048];
-                    let n = stream.read(&mut req_buf).unwrap_or(0);
-                    let req_str = String::from_utf8_lossy(&req_buf[..n]);
+                    let req_str = read_http_request(&mut stream);
                     let range_start = req_str
                         .lines()
                         .find(|l| l.to_ascii_lowercase().starts_with("range:"))
@@ -469,11 +491,10 @@ fn spawn_range_aware_server(
                     if req_idx == 0 {
                         if let Some(cut) = truncate_first_at {
                             let hdr =
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n";
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n";
                             let _ = stream.write_all(hdr.as_bytes());
                             let _ = stream.write_all(&full_payload[..cut]);
-                            let _ = stream.flush();
-                            let _ = stream.shutdown(std::net::Shutdown::Both);
+                            finish_http_response(&mut stream);
                             req_idx += 1;
                             continue;
                         }
@@ -484,22 +505,20 @@ fn spawn_range_aware_server(
                             let total = full_payload.len();
                             let end = total.saturating_sub(1);
                             let hdr = format!(
-                                "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes {start}-{end}/{total}\r\n\r\n"
+                                "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes {start}-{end}/{total}\r\nConnection: close\r\n\r\n"
                             );
                             let _ = stream.write_all(hdr.as_bytes());
                             let _ = stream.write_all(&full_payload[start..]);
-                            let _ = stream.flush();
-                            let _ = stream.shutdown(std::net::Shutdown::Both);
+                            finish_http_response(&mut stream);
                             req_idx += 1;
                             continue;
                         }
                     }
 
-                    let hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n";
+                    let hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n";
                     let _ = stream.write_all(hdr.as_bytes());
                     let _ = stream.write_all(&full_payload);
-                    let _ = stream.flush();
-                    let _ = stream.shutdown(std::net::Shutdown::Both);
+                    finish_http_response(&mut stream);
                     req_idx += 1;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
