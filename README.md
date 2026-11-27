@@ -4,7 +4,7 @@
 
 Offline, privacy-first AI background remover for desktop and CLI, built with a Rust core and ONNX Runtime.
 
-Status: **v1.0.0** (Windows desktop app & CLI tested locally; macOS and Linux builds are experimental and CI-verified only).
+Status: **v1.1.0** (Windows desktop app & CLI tested locally; macOS and Linux builds are experimental and CI-verified only).
 
 Built with Rust. Not affiliated with or endorsed by the Rust Foundation.
 
@@ -107,7 +107,7 @@ Uninstalling RustMatte removes only the application binary and never touches you
 
 - **Does RustMatte work offline?** Yes. Once the `.onnx` model file is cached or imported, RustMatte runs 100% locally. You can also turn on **"Never use the network"** in the desktop Options panel or pass `--no-download` in the CLI.
 - **Why does the first run ask to download a model?** Bundling 183 MB+ of AI weights inside every installer bloats downloads and updates. Instead, RustMatte keeps the installer small (`9.69 MiB` on Windows) and asks permission before downloading weights once from GitHub Releases (`github.com`, with `huggingface.co` fallback), verified by SHA-256.
-- **What licenses apply to the code and AI models?** The RustMatte application is licensed under **GPL-3.0-or-later** ([LICENSE](LICENSE)). Quality tier (`BiRefNet_lite_512`) weights are **MIT**, and Fast tier (`U-2-Netp`) weights are **Apache-2.0**. Both were trained on academic datasets (DIS5K / DUTS) with non-commercial dataset terms; see [MODELS.md](MODELS.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for full provenance notes.
+- **What licenses apply to the code and AI models?** The RustMatte application is licensed under **GPL-3.0-or-later** ([LICENSE](LICENSE)). Maximum tier (`BEN2 Base FP32`) weights are **Apache-2.0 / MIT**, Balanced/Quality tier (`BiRefNet_lite_512`) weights are **MIT**, and Fast tier (`U-2-Netp`) weights are **Apache-2.0**. See [MODELS.md](MODELS.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for full provenance notes.
 - **Why isn't output always identical to paid cloud APIs?** Cloud services often run huge proprietary multi-stage models on datacenter GPUs. RustMatte runs compact open-weight models (`512x512` / `320x320` input) on local consumer CPUs/GPUs so your photos never leave your computer.
 - **Why are glass bottles or windows segmented as solid?** Dichotomous foreground-segmentation models predict a foreground object mask rather than background refraction/transmittance, so transparent glass is treated as a solid subject.
 
@@ -127,7 +127,8 @@ Verified against upstream repositories and pricing pages on **2026-11-25**:
   - **Quality Tier (`birefnet_lite_512`, 183 MB)**: `2,984.9 ms` median inference / `3,070.9 ms` median total across 12 fixtures (`~3.68 s` cold-start model load); `2,029.9 MB` peak Working Set. Preserves fine hair and intricate silhouettes.
   - **Fast Tier (`u2netp`, 4.36 MB)**: `266.9 ms` median inference / `332.3 ms` median total across 12 fixtures (`349.5 ms`–`454.6 ms` average in 100-image batch); `333.3 MB` peak Working Set. Best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds.
 - **Glass Transparency**: Glass, windows, and translucent containers are segmented as solid foreground objects.
-- **Supported Formats**: JPEG, PNG, WebP, and BMP. RAW and HEIC support are on the [Roadmap](docs/ROADMAP.md) (`v1.1`).
+- **Supported Formats**: JPEG, PNG, WebP, BMP, Apple HEIC/HEIF, and Camera RAW embedded JPEG previews (`.CR2`, `.NEF`, `.ARW`, `.DNG`).
+- **Execution Devices**: CPU by default, with optional GPU acceleration via DirectML (Windows) and CoreML (macOS) and automatic CPU fallback.
 - **Platform Status**: Windows is tested locally; macOS (`aarch64`) and Linux builds are experimental until verified on physical hardware.
 
 ## Privacy and Network Use Statement

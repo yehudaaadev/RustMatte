@@ -20,6 +20,9 @@ pub enum ModelTier {
     /// Honest note: Best for people and products on clean backgrounds;
     /// may leave smears on fur or textured backgrounds.
     Fast,
+    /// Maximum quality model (`BEN2 Base FP32`).
+    /// Honest note: 1024x1024 input; ~13-15s/photo on CPU, ~2.6-2.8 GB RAM; faster with GPU.
+    Maximum,
 }
 
 /// Internal classification of model output semantics.
@@ -29,6 +32,8 @@ pub enum ModelKind {
     BiRefNet,
     /// U-2-Netp output requiring min-max normalization.
     U2Netp,
+    /// BEN2 Base FP32 output requiring min-max normalization.
+    Ben2,
 }
 
 /// Execution specifications and distribution manifest for an AI model.
@@ -125,12 +130,40 @@ pub static SPEC_FAST: ModelSpec = ModelSpec {
     std: [0.229, 0.224, 0.225],
 };
 
+// 3. BEN2 Base FP32:
+//    - Upstream weights: https://huggingface.co/PramaLLC/BEN2 (MIT, BEN2_Base)
+//    - FP32 ONNX conversion: https://huggingface.co/Pezhgorski/BEN2-FP32-ONNX (Apache-2.0)
+//    - Real byte length: 422,457,868 bytes
+//    - SHA-256: 9a8145c1c7ab73fcb265cb5feaab16e0a8c1986265e1a301cf0edd95103b99c9
+pub static SPEC_MAXIMUM: ModelSpec = ModelSpec {
+    tier: ModelTier::Maximum,
+    id: "ben2_fp32",
+    name: "BEN2 Base FP32 (Maximum Tier)",
+    default_filename: "ben2_fp32.onnx",
+    expected_sha256: "9a8145c1c7ab73fcb265cb5feaab16e0a8c1986265e1a301cf0edd95103b99c9",
+    expected_size: 422_457_868,
+    license: "Apache-2.0 (FP32 ONNX) / MIT (BEN2 Base)",
+    source_description:
+        "BEN2 Base FP32 ONNX conversion from HuggingFace (Pezhgorski/BEN2-FP32-ONNX; upstream PramaLLC/BEN2)",
+    source_urls: &[
+        "https://huggingface.co/Pezhgorski/BEN2-FP32-ONNX/resolve/main/onnx/model.onnx",
+    ],
+    width: 1024,
+    height: 1024,
+    input_name: "pixel_values",
+    output_name: "alphas",
+    kind: ModelKind::Ben2,
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+};
+
 /// Returns the static specification for the chosen tier.
 #[must_use]
 pub fn spec_for_tier(tier: ModelTier) -> &'static ModelSpec {
     match tier {
         ModelTier::Quality => &SPEC_QUALITY,
         ModelTier::Fast => &SPEC_FAST,
+        ModelTier::Maximum => &SPEC_MAXIMUM,
     }
 }
 

@@ -114,6 +114,80 @@ fn create_cpu_session(
     Ok(session)
 }
 
+/// Attempts to initialize a DirectML session on Windows, returning `None` on failure.
+#[cfg(target_os = "windows")]
+fn try_directml_session(
+    env: &ort::environment::Environment,
+    model_path: &Path,
+    threads: usize,
+    warn_unavailable: bool,
+) -> Option<Session> {
+    use ort::ep::ExecutionProvider as _;
+    if !matches!(ort::ep::DirectML::is_available(), Ok(true)) {
+        if warn_unavailable {
+            eprintln!("Warning: DirectML is not available on this device; falling back to CPU.");
+        }
+        return None;
+    }
+
+    let ep = ort::ep::DirectML::default().build();
+    let result: Result<Session, String> = (|| {
+        let mut builder = Session::builder(env)
+            .map_err(|e| format!("Session builder initialization failed ({e})"))?
+            .with_execution_providers([ep])
+            .map_err(|e| format!("DirectML configuration failed ({e})"))?
+            .with_intra_threads(threads)
+            .map_err(|e| format!("DirectML configuration failed ({e})"))?
+            .with_memory_pattern(false)
+            .map_err(|e| format!("DirectML configuration failed ({e})"))?;
+        builder
+            .commit_from_file(model_path)
+            .map_err(|e| format!("DirectML session commit failed ({e})"))
+    })();
+
+    match result {
+        Ok(session) => Some(session),
+        Err(msg) => {
+            eprintln!("Warning: {msg}; falling back to CPU.");
+            None
+        }
+    }
+}
+
+/// Attempts to initialize a CoreML session on macOS, returning `None` on failure.
+#[cfg(target_os = "macos")]
+fn try_coreml_session(
+    env: &ort::environment::Environment,
+    model_path: &Path,
+    warn_unavailable: bool,
+) -> Option<Session> {
+    use ort::ep::ExecutionProvider as _;
+    if let Ok(true) = ort::ep::CoreML::is_available() {
+        match Session::builder(env) {
+            Ok(builder) => {
+                let ep = ort::ep::CoreML::default().build();
+                match builder.with_execution_providers([ep]) {
+                    Ok(mut builder_with_ep) => match builder_with_ep.commit_from_file(model_path) {
+                        Ok(session) => return Some(session),
+                        Err(e) => eprintln!(
+                            "Warning: CoreML session commit failed ({e}); falling back to CPU."
+                        ),
+                    },
+                    Err(e) => eprintln!(
+                        "Warning: CoreML execution provider registration failed ({e}); falling back to CPU."
+                    ),
+                }
+            }
+            Err(e) => eprintln!(
+                "Warning: Session builder initialization failed ({e}); falling back to CPU."
+            ),
+        }
+    } else if warn_unavailable {
+        eprintln!("Warning: CoreML is not available on this device; falling back to CPU.");
+    }
+    None
+}
+
 /// Builds an ONNX Runtime session targeting the requested execution provider with automatic CPU fallback.
 pub fn create_session_with_provider(
     env: &ort::environment::Environment,
@@ -126,106 +200,36 @@ pub fn create_session_with_provider(
             let session = create_cpu_session(env, model_path, threads)?;
             Ok((session, ActiveExecutionProvider::Cpu))
         }
-        ExecutionProvider::DirectML | ExecutionProvider::Auto => {
-            #[cfg(all(target_os = "windows", feature = "directml"))]
-            {
-                use ort::ep::ExecutionProvider as _;
-                if let Ok(true) = ort::ep::DirectML::is_available() {
-                    match Session::builder(env) {
-                        Ok(builder) => {
-                            let ep = ort::ep::DirectML::default().build();
-                            let configured_builder = builder
-                                .with_execution_providers([ep])
-                                .and_then(|b| b.with_intra_threads(threads))
-                                .and_then(|b| b.with_memory_pattern(false));
-
-                            match configured_builder {
-                                Ok(mut b) => match b.commit_from_file(model_path) {
-                                    Ok(session) => {
-                                        return Ok((session, ActiveExecutionProvider::DirectML));
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "Warning: DirectML session commit failed ({e}); falling back to CPU."
-                                        );
-                                    }
-                                },
-                                Err(e) => {
-                                    eprintln!(
-                                        "Warning: DirectML configuration failed ({e}); falling back to CPU."
-                                    );
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "Warning: Session builder initialization failed ({e}); falling back to CPU."
-                            );
-                        }
-                    }
-                } else if provider == ExecutionProvider::DirectML {
-                    eprintln!(
-                        "Warning: DirectML is not available on this device; falling back to CPU."
-                    );
-                }
+        ExecutionProvider::DirectML => {
+            #[cfg(target_os = "windows")]
+            if let Some(session) = try_directml_session(env, model_path, threads, true) {
+                return Ok((session, ActiveExecutionProvider::DirectML));
             }
-
-            #[cfg(not(all(target_os = "windows", feature = "directml")))]
-            if provider == ExecutionProvider::DirectML {
-                eprintln!(
-                    "Warning: DirectML feature is not compiled or unsupported on this OS; falling back to CPU."
-                );
-            }
+            #[cfg(not(target_os = "windows"))]
+            eprintln!("Warning: DirectML is only supported on Windows; falling back to CPU.");
 
             let session = create_cpu_session(env, model_path, threads)?;
             Ok((session, ActiveExecutionProvider::Cpu))
         }
         ExecutionProvider::CoreML => {
-            #[cfg(all(target_os = "macos", feature = "coreml"))]
-            {
-                use ort::ep::ExecutionProvider as _;
-                if let Ok(true) = ort::ep::CoreML::is_available() {
-                    match Session::builder(env) {
-                        Ok(builder) => {
-                            let ep = ort::ep::CoreML::default().build();
-                            match builder.with_execution_providers([ep]) {
-                                Ok(mut builder_with_ep) => {
-                                    match builder_with_ep.commit_from_file(model_path) {
-                                        Ok(session) => {
-                                            return Ok((session, ActiveExecutionProvider::CoreML));
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "Warning: CoreML session commit failed ({e}); falling back to CPU."
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!(
-                                        "Warning: CoreML execution provider registration failed ({e}); falling back to CPU."
-                                    );
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "Warning: Session builder initialization failed ({e}); falling back to CPU."
-                            );
-                        }
-                    }
-                } else {
-                    eprintln!(
-                        "Warning: CoreML is not available on this device; falling back to CPU."
-                    );
-                }
+            #[cfg(target_os = "macos")]
+            if let Some(session) = try_coreml_session(env, model_path, true) {
+                return Ok((session, ActiveExecutionProvider::CoreML));
             }
+            #[cfg(not(target_os = "macos"))]
+            eprintln!("Warning: CoreML is only supported on macOS; falling back to CPU.");
 
-            #[cfg(not(all(target_os = "macos", feature = "coreml")))]
-            {
-                eprintln!(
-                    "Warning: CoreML feature is not compiled or unsupported on this OS; falling back to CPU."
-                );
+            let session = create_cpu_session(env, model_path, threads)?;
+            Ok((session, ActiveExecutionProvider::Cpu))
+        }
+        ExecutionProvider::Auto => {
+            #[cfg(target_os = "windows")]
+            if let Some(session) = try_directml_session(env, model_path, threads, false) {
+                return Ok((session, ActiveExecutionProvider::DirectML));
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(session) = try_coreml_session(env, model_path, false) {
+                return Ok((session, ActiveExecutionProvider::CoreML));
             }
 
             let session = create_cpu_session(env, model_path, threads)?;

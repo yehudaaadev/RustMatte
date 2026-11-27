@@ -20,8 +20,10 @@ export interface ItemWarning {
   detail: string;
 }
 
+export type ModelTierId = "quality" | "fast" | "maximum";
+
 export interface TierCutoutResult {
-  tier: "quality" | "fast";
+  tier: ModelTierId;
   cutoutPreviewPath: string;
   fullCutoutPath: string;
   timingMs: number;
@@ -48,10 +50,10 @@ export interface QueueItem {
   width?: number;
   height?: number;
   device?: string;
-  processedTier?: "quality" | "fast";
+  processedTier?: ModelTierId;
   processedRefine?: "none" | "light" | "standard";
   processedMaxSide?: number | null;
-  resultsByTier?: Partial<Record<"quality" | "fast", TierCutoutResult>>;
+  resultsByTier?: Partial<Record<ModelTierId, TierCutoutResult>>;
 }
 
 export interface RejectedItem {
@@ -223,9 +225,10 @@ export function setJobPhase(
   return { ...state, phase };
 }
 
-function normalizeProcessedTier(raw?: string): "quality" | "fast" | undefined {
+function normalizeProcessedTier(raw?: string): ModelTierId | undefined {
   if (raw === "fast") return "fast";
   if (raw === "quality") return "quality";
+  if (raw === "maximum") return "maximum";
   return undefined;
 }
 
@@ -350,7 +353,7 @@ export function applySingleRetryResult(
 export function selectItemModelResult(
   state: QueueState,
   itemPath: string,
-  tier: "quality" | "fast"
+  tier: ModelTierId
 ): QueueState {
   const nextItems = state.items.map((item) => {
     if (item.path !== itemPath) {
@@ -460,7 +463,7 @@ export function summarizeQueue(state: QueueState) {
 
 export function hasStaleProcessedItems(
   state: QueueState,
-  currentTier: "quality" | "fast",
+  currentTier: ModelTierId,
   currentRefine: "none" | "light" | "standard",
   currentMaxSide: number | null
 ): boolean {

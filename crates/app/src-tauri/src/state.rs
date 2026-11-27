@@ -51,6 +51,7 @@ pub struct SessionOptions {
 pub struct SessionCache {
     quality: Option<(SessionOptions, Remover)>,
     fast: Option<(SessionOptions, Remover)>,
+    maximum: Option<(SessionOptions, Remover)>,
 }
 
 impl SessionCache {
@@ -59,6 +60,7 @@ impl SessionCache {
         Self {
             quality: None,
             fast: None,
+            maximum: None,
         }
     }
 
@@ -66,6 +68,7 @@ impl SessionCache {
         match tier {
             ModelTier::Quality => &mut self.quality,
             ModelTier::Fast => &mut self.fast,
+            ModelTier::Maximum => &mut self.maximum,
         }
     }
 
@@ -75,6 +78,7 @@ impl SessionCache {
         let slot = match tier {
             ModelTier::Quality => &self.quality,
             ModelTier::Fast => &self.fast,
+            ModelTier::Maximum => &self.maximum,
         };
         matches!(slot.as_ref(), Some((cached_opts, _)) if cached_opts == options)
     }

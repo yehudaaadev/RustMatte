@@ -14,6 +14,7 @@ pub mod error;
 pub mod manifest;
 pub mod model;
 pub mod pipeline;
+pub(crate) mod raw;
 pub mod recommend;
 pub mod refine;
 pub mod session;
@@ -221,7 +222,12 @@ impl Remover {
 
             {
                 let sess = self.session.as_mut().expect("Session must be active");
-                match sess.run(ort::inputs![self.spec.input_name => tensor_val]) {
+                let input_name = sess
+                    .inputs()
+                    .first()
+                    .map(|i| i.name().to_string())
+                    .unwrap_or_else(|| self.spec.input_name.to_string());
+                match sess.run(ort::inputs![input_name.as_str() => tensor_val]) {
                     Ok(outputs) => {
                         let (_shape, raw_slice) =
                             outputs[0].try_extract_tensor::<f32>().map_err(|e| {
@@ -259,8 +265,13 @@ impl Remover {
 
                 let t_retry = Instant::now();
                 let sess = self.session.as_mut().unwrap();
+                let input_name = sess
+                    .inputs()
+                    .first()
+                    .map(|i| i.name().to_string())
+                    .unwrap_or_else(|| self.spec.input_name.to_string());
                 let fallback_outputs = sess
-                    .run(ort::inputs![self.spec.input_name => retry_tensor_val])
+                    .run(ort::inputs![input_name.as_str() => retry_tensor_val])
                     .map_err(|e| {
                         CoreError::InferenceSession(format!("CPU fallback inference failed: {e}"))
                     })?;
@@ -284,8 +295,13 @@ impl Remover {
         } else {
             let t_inf = Instant::now();
             let sess = self.session.as_mut().expect("Session must be active");
+            let input_name = sess
+                .inputs()
+                .first()
+                .map(|i| i.name().to_string())
+                .unwrap_or_else(|| self.spec.input_name.to_string());
             let outputs = sess
-                .run(ort::inputs![self.spec.input_name => tensor_val])
+                .run(ort::inputs![input_name.as_str() => tensor_val])
                 .map_err(|e| CoreError::InferenceSession(format!("Inference run failed: {e}")))?;
 
             let (_shape, raw_slice) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {

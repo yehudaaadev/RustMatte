@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub const BATCH_WARNING_LIMIT: usize = 1000;
 
 /// Supported image extensions for batch discovery (case-insensitive ASCII).
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = rustmatte_core::decode::SUPPORTED_EXTENSIONS;
 
 /// Discovered image job with input path, resolved output path, and relative display name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,6 +218,12 @@ mod tests {
         assert!(is_supported_image(Path::new("photo.png")));
         assert!(is_supported_image(Path::new("photo.webp")));
         assert!(is_supported_image(Path::new("photo.bmp")));
+        assert!(is_supported_image(Path::new("photo.cr2")));
+        assert!(is_supported_image(Path::new("photo.NEF")));
+        assert!(is_supported_image(Path::new("photo.arw")));
+        assert!(is_supported_image(Path::new("photo.DNG")));
+        assert!(is_supported_image(Path::new("photo.heic")));
+        assert!(is_supported_image(Path::new("photo.HEIF")));
         assert!(!is_supported_image(Path::new("photo.gif")));
         assert!(!is_supported_image(Path::new("photo.txt")));
         assert!(!is_supported_image(Path::new("photo")));

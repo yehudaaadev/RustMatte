@@ -12,7 +12,7 @@ export type PhotoSubject =
   | "animals_hair_or_fur"
   | "mixed_or_complex";
 
-export type WizardModelId = "balanced" | "fast";
+export type WizardModelId = "balanced" | "fast" | "maximum";
 
 export type RecommendationReason =
   | "occasional_balanced"
@@ -35,7 +35,7 @@ export interface DiskSpaceCheck {
 
 export interface ManifestModelInfo {
   id: WizardModelId;
-  tier: "quality" | "fast";
+  tier: "quality" | "fast" | "maximum";
   engine: string;
   filename: string;
   size_bytes: number;

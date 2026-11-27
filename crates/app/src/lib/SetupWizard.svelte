@@ -35,11 +35,11 @@
     initialModelId?: WizardModelId | null;
     onLanguageChange: (nextLang: Lang) => void;
     onRefreshManifest: () => Promise<void>;
-    onDownload: (tier: "quality" | "fast") => Promise<void>;
+    onDownload: (tier: "quality" | "fast" | "maximum") => Promise<void>;
     onCancelDownload: () => Promise<void>;
-    onDeletePartial: (tier: "quality" | "fast") => Promise<void>;
-    onImportLocal: (tier: "quality" | "fast") => Promise<void>;
-    onComplete: (chosenTier: "quality" | "fast") => void;
+    onDeletePartial: (tier: "quality" | "fast" | "maximum") => Promise<void>;
+    onImportLocal: (tier: "quality" | "fast" | "maximum") => Promise<void>;
+    onComplete: (chosenTier: "quality" | "fast" | "maximum") => void;
     onDismiss: () => void;
   }
 
@@ -132,6 +132,10 @@
         return t.cardTagFurSmears;
       case "fine_hair":
         return t.cardTagFineHair;
+      case "slow_cpu":
+        return t.cardTagSlowCpu;
+      case "high_ram":
+        return t.cardTagHighRam;
       default:
         return code;
     }
@@ -356,9 +360,9 @@
                   </button>
                 </div>
 
-                <h3>{m.id === "fast" ? t.cardFastTitle : t.cardBalancedTitle}</h3>
+                <h3>{m.id === "fast" ? t.cardFastTitle : m.id === "maximum" ? t.cardMaximumTitle : t.cardBalancedTitle}</h3>
                 <p class="model-summary">
-                  {m.id === "fast" ? t.cardFastSummary : t.cardBalancedSummary}
+                  {m.id === "fast" ? t.cardFastSummary : m.id === "maximum" ? t.cardMaximumSummary : t.cardBalancedSummary}
                 </p>
 
                 {#if isRecommended && recResponse}
@@ -367,8 +371,8 @@
 
                 <div class="model-metrics">
                   <span>{m.expected_size_mb.toFixed(1)} MB</span>
-                  <span>{m.id === "fast" ? t.cardFastSpeed : t.cardBalancedSpeed}</span>
-                  <span>{m.id === "fast" ? t.cardFastRam : t.cardBalancedRam}</span>
+                  <span>{m.id === "fast" ? t.cardFastSpeed : m.id === "maximum" ? t.cardMaximumSpeed : t.cardBalancedSpeed}</span>
+                  <span>{m.id === "fast" ? t.cardFastRam : m.id === "maximum" ? t.cardMaximumRam : t.cardBalancedRam}</span>
                   <span>{t.firstRunLicenseLabel}: {m.license_weights}</span>
                 </div>
                 <p class="measured-note">{t.cardMeasuredNote}</p>
@@ -440,7 +444,7 @@
         {#if selectedModel.cached}
           <div class="banner info" role="status">
             <div class="banner-body">
-              <strong>{selectedModel.id === "fast" ? t.cardFastTitle : t.cardBalancedTitle}</strong>
+              <strong>{selectedModel.id === "fast" ? t.cardFastTitle : selectedModel.id === "maximum" ? t.cardMaximumTitle : t.cardBalancedTitle}</strong>
               <p>{t.wizardStep4ReadyInstalled}</p>
             </div>
           </div>
@@ -577,7 +581,7 @@
         <div class="banner info" role="status">
           <div class="banner-body">
             <strong>{t.wizardStep5ActiveModel}:</strong>
-            <span>{selectedModel.id === "fast" ? t.cardFastTitle : t.cardBalancedTitle}</span>
+            <span>{selectedModel.id === "fast" ? t.cardFastTitle : selectedModel.id === "maximum" ? t.cardMaximumTitle : t.cardBalancedTitle}</span>
           </div>
         </div>
       {/if}

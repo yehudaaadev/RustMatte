@@ -282,3 +282,189 @@ fn test_execution_provider_parsing_and_display() {
     assert_eq!(format!("{}", ActiveExecutionProvider::DirectML), "DirectML");
     assert_eq!(format!("{}", ActiveExecutionProvider::CoreML), "CoreML");
 }
+
+fn encode_jpeg_bytes(width: u32, height: u32) -> Vec<u8> {
+    let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(width, height, |x, y| {
+        image::Rgb([(x % 255) as u8, (y % 255) as u8, 128])
+    }));
+    let mut buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut buf, image::ImageFormat::Jpeg)
+        .expect("Failed to encode synthetic JPEG");
+    buf.into_inner()
+}
+
+fn build_synthetic_raw_tiff(
+    little_endian: bool,
+    orientation: u16,
+    small_jpeg: &[u8],
+    large_jpeg: &[u8],
+) -> Vec<u8> {
+    let mut out = Vec::new();
+    let put_u16 = |buf: &mut Vec<u8>, v: u16| {
+        if little_endian {
+            buf.extend_from_slice(&v.to_le_bytes());
+        } else {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+    };
+    let put_u32 = |buf: &mut Vec<u8>, v: u32| {
+        if little_endian {
+            buf.extend_from_slice(&v.to_le_bytes());
+        } else {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+    };
+    let put_entry = |buf: &mut Vec<u8>, tag: u16, ftype: u16, count: u32, val_u32: u32| {
+        put_u16(buf, tag);
+        put_u16(buf, ftype);
+        put_u32(buf, count);
+        if ftype == 3 && count == 1 {
+            put_u16(buf, val_u32 as u16);
+            put_u16(buf, 0);
+        } else {
+            put_u32(buf, val_u32);
+        }
+    };
+
+    // TIFF Header (8 bytes): IFD0 starts at offset 8
+    if little_endian {
+        out.extend_from_slice(b"II");
+    } else {
+        out.extend_from_slice(b"MM");
+    }
+    put_u16(&mut out, 42);
+    put_u32(&mut out, 8);
+
+    // IFD0: 4 entries (Orientation, JPEGInterchangeFormat, JPEGInterchangeFormatLength, SubIFDs)
+    let ifd0_entries = 4u16;
+    let subifd_offset = 8 + 2 + u32::from(ifd0_entries) * 12 + 4;
+    let subifd_entries = 2u16;
+    let small_offset = subifd_offset + 2 + u32::from(subifd_entries) * 12 + 4;
+    let large_offset = small_offset + small_jpeg.len() as u32;
+
+    put_u16(&mut out, ifd0_entries);
+    put_entry(&mut out, 0x0112, 3, 1, u32::from(orientation));
+    put_entry(&mut out, 0x014A, 4, 1, subifd_offset);
+    put_entry(&mut out, 0x0201, 4, 1, small_offset);
+    put_entry(&mut out, 0x0202, 4, 1, small_jpeg.len() as u32);
+    put_u32(&mut out, 0); // next IFD = 0
+
+    // SubIFD: 2 entries (StripOffsets, StripByteCounts) pointing to large JPEG
+    assert_eq!(out.len() as u32, subifd_offset);
+    put_u16(&mut out, subifd_entries);
+    put_entry(&mut out, 0x0111, 4, 1, large_offset);
+    put_entry(&mut out, 0x0117, 4, 1, large_jpeg.len() as u32);
+    put_u32(&mut out, 0);
+
+    assert_eq!(out.len() as u32, small_offset);
+    out.extend_from_slice(small_jpeg);
+    assert_eq!(out.len() as u32, large_offset);
+    out.extend_from_slice(large_jpeg);
+    out
+}
+
+#[test]
+fn test_decode_raw_selects_largest_preview_and_applies_orientation() {
+    let small = encode_jpeg_bytes(4, 2);
+    let large = encode_jpeg_bytes(16, 8);
+    assert!(large.len() > small.len());
+
+    let raw_le = build_synthetic_raw_tiff(true, 6, &small, &large);
+    let raw_be = build_synthetic_raw_tiff(false, 6, &small, &large);
+
+    let temp_dir = std::env::temp_dir().join(format!("rustmatte_raw_test_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    for (name, bytes) in [
+        ("sample.cr2", &raw_le),
+        ("sample.NEF", &raw_be),
+        ("sample.arw", &raw_le),
+        ("sample.DNG", &raw_be),
+    ] {
+        let path = temp_dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+
+        let (img, warnings) = decode_image(&path).expect("RAW preview should decode");
+        assert!(warnings.is_empty(), "Unexpected warnings for {name}");
+        // Orientation 6 (Rotate90) swaps 16x8 into 8x16
+        assert_eq!(img.width(), 8, "Expected rotated width 8 for {name}");
+        assert_eq!(img.height(), 16, "Expected rotated height 16 for {name}");
+    }
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_decode_raw_truncated_preview_and_missing_preview_errors() {
+    let small = encode_jpeg_bytes(4, 4);
+    let mut truncated_large = encode_jpeg_bytes(16, 12);
+    // Strip EOI marker (0xFF 0xD9)
+    truncated_large.truncate(truncated_large.len() - 2);
+
+    let temp_dir = std::env::temp_dir().join(format!("rustmatte_raw_err_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let trunc_path = temp_dir.join("truncated.CR2");
+    let raw_trunc = build_synthetic_raw_tiff(true, 1, &small, &truncated_large);
+    std::fs::write(&trunc_path, &raw_trunc).unwrap();
+    match decode_image(&trunc_path) {
+        Ok((_img, warnings)) => {
+            assert!(warnings
+                .iter()
+                .any(|w| matches!(w, Warning::DamagedInput(_))));
+        }
+        Err(CoreError::ImageDecode { .. }) => {}
+        other => panic!("Unexpected result for truncated RAW preview: {other:?}"),
+    }
+
+    // Malformed / short RAW file
+    let bad_path = temp_dir.join("malformed.nef");
+    std::fs::write(&bad_path, b"NOT_A_TIFF").unwrap();
+    assert!(matches!(
+        decode_image(&bad_path),
+        Err(CoreError::ImageDecode { .. })
+    ));
+
+    // Valid TIFF header but no embedded JPEG preview
+    let no_preview_path = temp_dir.join("empty_ifd.dng");
+    let mut no_preview = Vec::new();
+    no_preview.extend_from_slice(b"II\x2A\x00\x08\x00\x00\x00");
+    no_preview.extend_from_slice(&0u16.to_le_bytes()); // 0 entries
+    no_preview.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+    std::fs::write(&no_preview_path, &no_preview).unwrap();
+    assert!(matches!(
+        decode_image(&no_preview_path),
+        Err(CoreError::ImageDecode { .. })
+    ));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_decode_heic_handles_zerobyte_and_malformed_safely() {
+    let temp_dir = std::env::temp_dir().join(format!("rustmatte_heic_test_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let zero_path = temp_dir.join("empty.HEIC");
+    std::fs::write(&zero_path, b"").unwrap();
+    assert!(matches!(
+        decode_image(&zero_path),
+        Err(CoreError::ZeroByteInput { .. })
+    ));
+
+    let bad_heic = temp_dir.join("corrupt.heic");
+    std::fs::write(&bad_heic, b"ftypheic_corrupt_payload").unwrap();
+    assert!(matches!(
+        decode_image(&bad_heic),
+        Err(CoreError::ImageDecode { .. })
+    ));
+
+    let bad_heif = temp_dir.join("corrupt.HEIF");
+    std::fs::write(&bad_heif, b"not_a_valid_heif_box").unwrap();
+    assert!(matches!(
+        decode_image(&bad_heif),
+        Err(CoreError::ImageDecode { .. })
+    ));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

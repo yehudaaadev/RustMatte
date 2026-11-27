@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-27
+
+### Added
+- **Camera RAW Embedded Preview & Apple HEIC/HEIF Support**: Added internal TIFF-IFD embedded JPEG preview extraction (`crates/core/src/raw.rs`) for `.CR2`, `.NEF`, `.ARW`, and `.DNG`, plus pure-Rust HEIC/HEIF decoding via `heic-rs 0.1.5` (`crates/core/src/decode.rs`), synced across CLI, Tauri backend validation, and Svelte file dialogs/copy.
+- **GPU Acceleration (DirectML & CoreML) with CPU Fallback**: Enabled target-specific `ort` `directml` (Windows) and `coreml` (macOS) execution providers in `crates/core/src/session.rs` with automatic CPU fallback and a `device` selector (`cpu`, `auto`, `directml`, `coreml`) in Desktop Settings.
+- **Maximum Model Tier (`BEN2 Base FP32`)**: Added `ModelTier::Maximum` (`ben2_fp32.onnx`, `422,457,868` bytes, Apache-2.0 / MIT) across `crates/core` manifest/pipeline, CLI (`--tier maximum`), and Desktop Setup Wizard, Settings, and per-photo retry comparison.
+
 ## [1.0.0] - 2026-11-26
 
 ### Added & Improved

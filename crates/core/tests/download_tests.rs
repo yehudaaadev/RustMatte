@@ -426,7 +426,7 @@ fn test_mock_server_oversized_body() {
 fn test_manifest_matches_model_specs() {
     let entries = manifest_entries();
     assert_eq!(validate_manifest(entries), Ok(()));
-    assert_eq!(entries.len(), 2);
+    assert_eq!(entries.len(), 3);
     for entry in entries {
         let spec = spec_for_tier(entry.tier);
         assert_eq!(entry.file_name, spec.default_filename);

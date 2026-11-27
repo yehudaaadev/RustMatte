@@ -83,7 +83,7 @@ pub fn postprocess_mask(
                 model_mask.push(val);
             }
         }
-        ModelKind::U2Netp => {
+        ModelKind::U2Netp | ModelKind::Ben2 => {
             // Min-max normalization: (val - min) / (max - min)
             let mut min_val = f32::INFINITY;
             let mut max_val = f32::NEG_INFINITY;

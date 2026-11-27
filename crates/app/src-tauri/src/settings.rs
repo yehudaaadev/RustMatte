@@ -53,7 +53,7 @@ impl AppSettings {
         if !matches!(self.theme.as_str(), "system" | "dark" | "light") {
             self.theme = "system".to_string();
         }
-        if self.tier != "quality" && self.tier != "fast" {
+        if !matches!(self.tier.as_str(), "quality" | "fast" | "maximum") {
             self.tier = "quality".to_string();
         }
         if !matches!(self.device.as_str(), "auto" | "cpu" | "directml" | "coreml") {
@@ -102,13 +102,7 @@ pub fn load_settings_from_path(path: &Path) -> AppSettings {
         return AppSettings::default();
     };
     match serde_json::from_str::<AppSettings>(&contents) {
-        Ok(parsed) => {
-            let mut clean = parsed.sanitized();
-            if clean.device == "auto" {
-                clean.device = "cpu".to_string();
-            }
-            clean
-        }
+        Ok(parsed) => parsed.sanitized(),
         Err(err) => {
             eprintln!(
                 "Warning: Settings file '{}' is corrupt ({err}); using defaults.",
@@ -243,13 +237,13 @@ mod tests {
     }
 
     #[test]
-    fn migrates_saved_auto_device_to_cpu_on_load() {
-        let (path, dir) = temp_settings_path("migrate_auto");
+    fn preserves_saved_auto_device_on_load() {
+        let (path, dir) = temp_settings_path("preserve_auto");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&path, br#"{"device":"auto","tier":"fast"}"#).unwrap();
 
         let loaded = load_settings_from_path(&path);
-        assert_eq!(loaded.device, "cpu");
+        assert_eq!(loaded.device, "auto");
         assert_eq!(loaded.tier, "fast");
 
         let _ = std::fs::remove_dir_all(&dir);

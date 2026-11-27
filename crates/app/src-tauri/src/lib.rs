@@ -69,6 +69,7 @@ pub struct ModelTierStatus {
 pub struct ModelsStatusResponse {
     pub quality: ModelTierStatus,
     pub fast: ModelTierStatus,
+    pub maximum: ModelTierStatus,
     pub cache_dir: String,
 }
 
@@ -233,6 +234,7 @@ pub struct SaveAllResult {
 fn parse_tier(tier_str: &str) -> ModelTier {
     match tier_str.to_ascii_lowercase().as_str() {
         "fast" => ModelTier::Fast,
+        "maximum" | "ben2" => ModelTier::Maximum,
         _ => ModelTier::Quality,
     }
 }
@@ -313,6 +315,7 @@ fn tier_status_from_spec(tier: ModelTier, caveat: Option<String>) -> ModelTierSt
         tier: match tier {
             ModelTier::Quality => "quality".to_string(),
             ModelTier::Fast => "fast".to_string(),
+            ModelTier::Maximum => "maximum".to_string(),
         },
         name: spec.name.to_string(),
         filename: spec.default_filename.to_string(),
@@ -376,6 +379,13 @@ mod commands {
                         .to_string(),
                 ),
             ),
+            maximum: tier_status_from_spec(
+                ModelTier::Maximum,
+                Some(
+                    "1024x1024 resolution; ~14s/photo on CPU, ~2.8 GB RAM; faster with GPU."
+                        .to_string(),
+                ),
+            ),
             cache_dir: default_cache_dir().to_string_lossy().to_string(),
         })
     }
@@ -422,6 +432,7 @@ mod commands {
                     tier: match entry.tier {
                         ModelTier::Quality => "quality".to_string(),
                         ModelTier::Fast => "fast".to_string(),
+                        ModelTier::Maximum => "maximum".to_string(),
                     },
                     engine: entry.engine.to_string(),
                     filename: entry.file_name.to_string(),
@@ -590,6 +601,7 @@ mod commands {
         let tier_label = match model_tier {
             ModelTier::Quality => "quality",
             ModelTier::Fast => "fast",
+            ModelTier::Maximum => "maximum",
         }
         .to_string();
 
@@ -624,6 +636,7 @@ mod commands {
         let tier_label = match model_tier {
             ModelTier::Quality => "quality",
             ModelTier::Fast => "fast",
+            ModelTier::Maximum => "maximum",
         }
         .to_string();
 
@@ -781,6 +794,7 @@ mod commands {
         let tier_str = match tier {
             ModelTier::Fast => "fast",
             ModelTier::Quality => "quality",
+            ModelTier::Maximum => "maximum",
         }
         .to_string();
         let refine_str = match refine_level {
@@ -1105,6 +1119,7 @@ mod commands {
         let tier_str = match tier {
             ModelTier::Fast => "fast",
             ModelTier::Quality => "quality",
+            ModelTier::Maximum => "maximum",
         }
         .to_string();
         let refine_str = match refine_level {

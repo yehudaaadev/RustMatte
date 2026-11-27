@@ -30,6 +30,8 @@ export interface Translations {
   tierQualityDesc: string;
   tierFastName: string;
   tierFastDesc: string;
+  tierMaximumName: string;
+  tierMaximumDesc: string;
 
   refineLabel: string;
   refineNone: string;
@@ -228,6 +230,10 @@ export interface Translations {
   cardBalancedSummary: string;
   cardBalancedSpeed: string;
   cardBalancedRam: string;
+  cardMaximumTitle: string;
+  cardMaximumSummary: string;
+  cardMaximumSpeed: string;
+  cardMaximumRam: string;
   cardMeasuredNote: string;
   cardStrengthsLabel: string;
   cardWeaknessesLabel: string;
@@ -245,6 +251,8 @@ export interface Translations {
   cardTagLargerDownload: string;
   cardTagFurSmears: string;
   cardTagFineHair: string;
+  cardTagSlowCpu: string;
+  cardTagHighRam: string;
 
   settingsBtn: string;
   settingsTitle: string;
@@ -295,7 +303,7 @@ export const dictionaries: Record<Lang, Translations> = {
     themeDark: "Dark",
 
     dropTitle: "Drop photos or a folder here, or click to browse",
-    dropSubtitle: "Supports JPG, JPEG, PNG, WebP, and BMP",
+    dropSubtitle: "Supports JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, and RAW (CR2, NEF, ARW, DNG)",
     browsePhotos: "Browse Photos",
     browseFolder: "Browse Folder",
 
@@ -314,6 +322,9 @@ export const dictionaries: Record<Lang, Translations> = {
     tierFastName: "Fast (U-2-Netp)",
     tierFastDesc:
       "Very quick (under 1 s); best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds.",
+    tierMaximumName: "Maximum (BEN2 Base FP32)",
+    tierMaximumDesc:
+      "Highest 1024x1024 detail; slow on CPU (~16 s/photo) and uses ~2.8 GB RAM.",
 
     refineLabel: "Edge Refinement",
     refineNone: "None (raw mask)",
@@ -435,7 +446,8 @@ export const dictionaries: Record<Lang, Translations> = {
     rejectedReasonInaccessible: "File or folder could not be accessed",
     rejectedReasonReadDir: "Failed to read folder contents",
     rejectedReasonNotFileOrDir: "Item is not a regular file or folder",
-    rejectedReasonUnsupported: "Unsupported image format (use JPG, JPEG, PNG, WebP, or BMP)",
+    rejectedReasonUnsupported:
+      "Unsupported image format (use JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, or RAW: CR2, NEF, ARW, DNG)",
     warningDamagedInput: "Image file may be damaged or incomplete",
 
     errOfflineTitle: "Network access is turned off in Settings.",
@@ -455,7 +467,7 @@ export const dictionaries: Record<Lang, Translations> = {
       "Set Max Output Size to 1024 px or 2048 px, close heavy background apps, or switch to the Fast model.",
     errUnsupportedTitle: "This file could not be decoded as a supported image.",
     errUnsupportedFix:
-      "Use a valid JPG, JPEG, PNG, WebP, or BMP photo.",
+      "Use a valid JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, or RAW (CR2, NEF, ARW, DNG) photo.",
     errOverwriteTitle: "Cannot save over the original photo.",
     errOverwriteFix:
       "Choose a different filename or output folder so your original photo stays untouched.",
@@ -529,6 +541,10 @@ export const dictionaries: Record<Lang, Translations> = {
     cardBalancedSummary: "Cleaner hair and fur at a reasonable speed.",
     cardBalancedSpeed: "About 3 s per photo",
     cardBalancedRam: "About 2 GB RAM",
+    cardMaximumTitle: "Maximum (BEN2 Base FP32)",
+    cardMaximumSummary: "Highest 1024x1024 detail for difficult hair, fur, and edges.",
+    cardMaximumSpeed: "About 14 to 16 s per photo (CPU)",
+    cardMaximumRam: "About 2.6 to 2.8 GB RAM",
     cardMeasuredNote: "Measured on a mid-range PC (i5-10400, 6 cores)",
     cardStrengthsLabel: "Strengths",
     cardWeaknessesLabel: "Weaknesses",
@@ -547,6 +563,8 @@ export const dictionaries: Record<Lang, Translations> = {
     cardTagLargerDownload: "Larger 183 MB download and ~2 GB RAM",
     cardTagFurSmears: "May leave faint smears on fur and textured backgrounds",
     cardTagFineHair: "Less tidy on fine hair strands",
+    cardTagSlowCpu: "Slow on CPU (about 14 to 16 s per photo)",
+    cardTagHighRam: "High RAM (~2.8 GB) and 403 MB download",
 
     settingsBtn: "Settings",
     settingsTitle: "Settings",
@@ -595,7 +613,7 @@ export const dictionaries: Record<Lang, Translations> = {
     themeDark: "Gelap",
 
     dropTitle: "Tarik foto atau folder ke sini, atau klik untuk memilih",
-    dropSubtitle: "Mendukung JPG, JPEG, PNG, WebP, dan BMP",
+    dropSubtitle: "Mendukung JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, dan RAW (CR2, NEF, ARW, DNG)",
     browsePhotos: "Pilih Foto",
     browseFolder: "Pilih Folder",
 
@@ -614,6 +632,9 @@ export const dictionaries: Record<Lang, Translations> = {
     tierFastName: "Fast (U-2-Netp)",
     tierFastDesc:
       "Sangat cepat (di bawah 1 detik); cocok untuk foto orang atau produk berlatar bersih; bisa meninggalkan noda halus pada bulu atau latar ramai.",
+    tierMaximumName: "Maximum (BEN2 Base FP32)",
+    tierMaximumDesc:
+      "Detail tertinggi 1024x1024; lambat di CPU (~16 dtk/foto) dan butuh ~2,8 GB RAM.",
 
     refineLabel: "Kehalusan Tepi",
     refineNone: "Tanpa penghalusan",
@@ -736,7 +757,8 @@ export const dictionaries: Record<Lang, Translations> = {
     rejectedReasonInaccessible: "File atau folder tidak dapat diakses",
     rejectedReasonReadDir: "Gagal membaca isi folder",
     rejectedReasonNotFileOrDir: "Item bukan file atau folder biasa",
-    rejectedReasonUnsupported: "Format gambar tidak didukung (gunakan JPG, JPEG, PNG, WebP, atau BMP)",
+    rejectedReasonUnsupported:
+      "Format gambar tidak didukung (gunakan JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, atau RAW: CR2, NEF, ARW, DNG)",
     warningDamagedInput: "File gambar tampak rusak atau tidak utuh",
 
     errOfflineTitle: "Akses internet dimatikan di Pengaturan.",
@@ -756,7 +778,7 @@ export const dictionaries: Record<Lang, Translations> = {
       "Turunkan Batas Resolusi Output ke 1024 px atau 2048 px, tutup aplikasi lain, atau gunakan model Fast.",
     errUnsupportedTitle: "File ini tidak bisa dibaca sebagai gambar yang didukung.",
     errUnsupportedFix:
-      "Gunakan foto berformat JPG, JPEG, PNG, WebP, atau BMP yang tidak rusak.",
+      "Gunakan foto berformat JPG, JPEG, PNG, WebP, BMP, HEIC/HEIF, atau RAW (CR2, NEF, ARW, DNG) yang tidak rusak.",
     errOverwriteTitle: "Tidak bisa menimpa foto asli.",
     errOverwriteFix:
       "Pilih nama file atau folder lain agar foto asli Anda tetap aman.",
@@ -830,6 +852,10 @@ export const dictionaries: Record<Lang, Translations> = {
     cardBalancedSummary: "Rambut dan bulu lebih rapi dengan kecepatan yang wajar.",
     cardBalancedSpeed: "Sekitar 3 detik per foto",
     cardBalancedRam: "Sekitar 2 GB RAM",
+    cardMaximumTitle: "Maksimum (BEN2 Base FP32)",
+    cardMaximumSummary: "Detail tertinggi 1024x1024 untuk rambut, bulu, dan tepi rumit.",
+    cardMaximumSpeed: "Sekitar 14 hingga 16 detik per foto (CPU)",
+    cardMaximumRam: "Sekitar 2,6 hingga 2,8 GB RAM",
     cardMeasuredNote: "Diukur pada PC kelas menengah (i5-10400, 6 core)",
     cardStrengthsLabel: "Kelebihan",
     cardWeaknessesLabel: "Kekurangan",
@@ -848,6 +874,8 @@ export const dictionaries: Record<Lang, Translations> = {
     cardTagLargerDownload: "Unduhan 183 MB dan butuh sekitar 2 GB RAM",
     cardTagFurSmears: "Dapat menyisakan noda tipis pada bulu atau latar bertekstur",
     cardTagFineHair: "Kurang rapi pada helai rambut halus",
+    cardTagSlowCpu: "Lambat di CPU (sekitar 14 hingga 16 detik per foto)",
+    cardTagHighRam: "Butuh RAM tinggi (~2,8 GB) dan unduhan 403 MB",
 
     settingsBtn: "Pengaturan",
     settingsTitle: "Pengaturan",

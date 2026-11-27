@@ -27,6 +27,9 @@ enum CliTier {
     Quality,
     /// Fast tier using U-2-Netp: best for people and products on clean backgrounds; may leave smears on fur or textured backgrounds.
     Fast,
+    /// Maximum quality tier using BEN2 Base FP32 (1024x1024; slower on CPU, higher RAM).
+    #[value(alias = "ben2")]
+    Maximum,
 }
 
 impl From<CliTier> for ModelTier {
@@ -34,6 +37,7 @@ impl From<CliTier> for ModelTier {
         match tier {
             CliTier::Quality => ModelTier::Quality,
             CliTier::Fast => ModelTier::Fast,
+            CliTier::Maximum => ModelTier::Maximum,
         }
     }
 }
@@ -258,6 +262,7 @@ fn ensure_model_available(
                     match spec.tier {
                         ModelTier::Quality => "quality",
                         ModelTier::Fast => "fast",
+                        ModelTier::Maximum => "maximum",
                     }
                 ));
             }
@@ -312,7 +317,7 @@ fn ensure_model_available(
 fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
     match args.action {
         ModelsAction::List => {
-            let tiers = [ModelTier::Quality, ModelTier::Fast];
+            let tiers = [ModelTier::Quality, ModelTier::Fast, ModelTier::Maximum];
             let cache_dir = target_cache_dir();
             println!(
                 "{:<10} {:<18} {:<24} {:<10} {:<12} Status",
@@ -409,7 +414,7 @@ fn handle_models_command(args: ModelsArgs) -> Result<(), String> {
         ModelsAction::Verify { tier } => {
             let tiers: Vec<ModelTier> = match tier {
                 Some(t) => vec![t.into()],
-                None => vec![ModelTier::Quality, ModelTier::Fast],
+                None => vec![ModelTier::Quality, ModelTier::Fast, ModelTier::Maximum],
             };
             let mut any_failed = false;
             for t in tiers {

@@ -9,6 +9,7 @@ import {
   renderWarningItem,
 } from "../src/lib/banners.ts";
 import { dictionaries } from "../src/lib/i18n.ts";
+import { SUPPORTED_IMAGE_EXTENSIONS } from "../src/lib/formats.ts";
 
 test("English and Indonesian dictionaries have identical keys and non-empty values", () => {
   const enKeys = Object.keys(dictionaries.en).sort();
@@ -103,5 +104,37 @@ test("wizard recommendation reasons and model card tags translate cleanly in EN 
       dictionaries.id[key] !== dictionaries.en[key],
       `Expected distinct Indonesian translation for ${key}`
     );
+  }
+});
+
+test("supported image extensions and format copy match v1.1 Phase 1 contract", () => {
+  assert.deepEqual([...SUPPORTED_IMAGE_EXTENSIONS], [
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "bmp",
+    "cr2",
+    "nef",
+    "arw",
+    "dng",
+    "heic",
+    "heif",
+  ]);
+
+  const formatKeys: (keyof typeof dictionaries.en)[] = [
+    "dropSubtitle",
+    "rejectedReasonUnsupported",
+    "errUnsupportedFix",
+  ];
+  for (const key of formatKeys) {
+    for (const lang of ["en", "id"] as const) {
+      const text = dictionaries[lang][key];
+      assert.ok(text.includes("HEIC/HEIF"), `${lang}.${key} must mention HEIC/HEIF`);
+      assert.ok(
+        text.includes("CR2") && text.includes("NEF") && text.includes("ARW") && text.includes("DNG"),
+        `${lang}.${key} must mention RAW extensions (CR2, NEF, ARW, DNG)`
+      );
+    }
   }
 });

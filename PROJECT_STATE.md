@@ -1,12 +1,21 @@
 # RustMatte Project State
 
 ## Current Phase
-v1.0.0 Published to Public Release — official v1.0.0 release published on GitHub with multi-OS installers (Windows NSIS setup, macOS DMG, Linux AppImage/deb, and CLI binaries); ready to start v1.1 scope (Phase 6).
+v1.1.0 Ready for Release — Stage 1 (RAW `.CR2`/`.NEF`/`.ARW`/`.DNG` preview & HEIC/HEIF), Stage 2A (GPU DirectML/CoreML with CPU fallback & UI device selector), and Stage 2B (BEN2 Base FP32 `Maximum` tier) implemented, reviewed side-by-side, and verified against quality/license gates; version bumped to `1.1.0`.
 
 ## Last Session Summary
-- Bumped workspace and app to `1.0.0`, verified full quality gate, and pushed commit `3bafc9d` to `origin/main`.
-- Tagged `v1.0.0` and pushed to GitHub; GitHub Actions workflow `45756623551` successfully built Windows, macOS, and Linux installers and CLI archives.
-- Published release `v1.0.0` publicly at https://github.com/yehudaaadev/RustMatte/releases/tag/v1.0.0.
+- Published v1.0.0 publicly at https://github.com/yehudaaadev/RustMatte/releases/tag/v1.0.0 (`3bafc9d`, workflow `45756623551`).
+- Implemented v1.1 Stage 1: internal TIFF-IFD embedded JPEG preview extractor (`crates/core/src/raw.rs`) and pure-Rust HEIC/HEIF decoder (`heic-rs = "=0.1.5"`, `MIT OR Apache-2.0`) in `crates/core/src/decode.rs`, synced across `crates/cli`, `crates/app/src-tauri`, and Svelte UI (`crates/app/src/`).
+- Verified `crates/app/` frontend build (`npm ci`, `svelte-check`: 0 errors/0 warnings, `vite build`).
+- Implemented v1.1 Stage 2A (GPU acceleration):
+  - Enabled target-specific `ort` `directml` (Windows) and `coreml` (macOS) in `crates/core/Cargo.toml`.
+  - Refactored `crates/core/src/session.rs` (`try_directml_session`, `try_coreml_session`) and fixed `ExecutionProvider::Auto` to try CoreML on macOS as well as DirectML on Windows with automatic CPU fallback.
+  - Enabled `device` selector (`cpu`, `auto`, `directml`, `coreml`) in `crates/app/src/lib/SettingsModal.svelte` and `crates/app/src/routes/+page.svelte`, and preserved saved `"auto"` in `crates/app/src-tauri/src/settings.rs`.
+  - Verified release CLI DirectML execution on `tests/fixtures/rambut1.jpg` (`Fast --device auto`: DirectML `278.41 ms` inference; `Quality --device directml`: DirectML `3343.15 ms` inference).
+- Implemented v1.1 Stage 2B (BEN2 Base FP32 `Maximum` tier):
+  - Added `ModelTier::Maximum` (`ben2_fp32.onnx`, `422,457,868` bytes, SHA-256 `9a8145c1c7ab73fcb265cb5feaab16e0a8c1986265e1a301cf0edd95103b99c9`) in `crates/core/src/model.rs`, `manifest.rs`, `pipeline.rs`, `lib.rs`, `crates/cli`, `crates/app/src-tauri`, and Svelte UI (`SetupWizard.svelte`, `SettingsModal.svelte`, `+page.svelte`, `i18n.ts`).
+  - Documented BEN2 Base MIT / Apache-2.0 license and DIS5K + 22K proprietary dataset provenance in `THIRD_PARTY_LICENSES.md` and `MODELS.md`.
+  - Downloaded & verified `ben2_fp32.onnx` via `rustmatte models download --tier maximum --yes` and benchmarked on `tests/fixtures/rambut1.jpg` (`CPU`: `16,241.64 ms` inference / `20,412.94 ms` total; `DirectML`: `24,068.57 ms` inference / `72,794.10 ms` total).
 
 ## Done
 - **v1.0.0 Officially Released**:
@@ -21,15 +30,13 @@ v1.0.0 Published to Public Release — official v1.0.0 release published on GitH
   - Multi-OS GitHub Release published (`RustMatte_1.0.0_x64-setup.exe`, `.dmg`, `.AppImage`, `.deb`, CLI archives).
 
 ## In Progress
-- Transitioning to **v1.1 Scope** (`PRD_V2.md` §16 / `docs/TASKS.md` Phase 6):
-  1. Camera RAW decoding support (`.CR2`, `.NEF`, `.ARW`, `.DNG`).
-  2. Apple iPhone HEIC/HEIF decoding support.
-  3. Model AI ke-3: **BEN2 (Maximum Quality)** with GPU DirectML/CoreML acceleration.
+- **v1.1.0 Release Prep**:
+  1. Camera RAW & Apple HEIC/HEIF decoding — implemented, quality-gated, and verified by owner.
+  2. GPU DirectML (Windows) / CoreML (macOS) with CPU fallback — Windows DirectML verified; CoreML macOS pending CI run.
+  3. Model AI ke-3: **BEN2 Base FP32 (`Maximum`)** — implemented, quality-gated, and side-by-side review vs Balanced approved by owner.
 
 ## Next Step
-Owner decides priority for v1.1 kickoff:
-1. RAW/HEIF image decoding codecs in `crates/core`, or
-2. GPU DirectML / CoreML hardware acceleration & BEN2 model integration.
+1. Build & verify Windows NSIS installer (`v1.1.0`), then commit & tag `v1.1.0` to trigger multi-OS CI/Release builds (including macOS CoreML & Linux).
 
 ## Last Updated
-2026-11-26
+2026-11-27

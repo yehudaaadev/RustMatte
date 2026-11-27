@@ -8,6 +8,8 @@ use crate::model::{ModelKind, ModelTier};
 pub const MODEL_ID_BALANCED_STR: &str = "balanced";
 /// Canonical ID for the Fast profile (`U-2-Netp`).
 pub const MODEL_ID_FAST_STR: &str = "fast";
+/// Canonical ID for the Maximum profile (`BEN2 Base FP32`).
+pub const MODEL_ID_MAXIMUM_STR: &str = "maximum";
 
 /// Stability and visibility lifecycle status for a manifest entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,7 +207,47 @@ pub static MANIFEST_FAST: ModelManifestEntry = ModelManifestEntry {
     min_available_ram_mb: 512,
 };
 
-static ALL_MANIFEST_ENTRIES: [&ModelManifestEntry; 2] = [&MANIFEST_BALANCED, &MANIFEST_FAST];
+/// Maximum profile (`BEN2 Base FP32`, Maximum tier).
+pub static MANIFEST_MAXIMUM: ModelManifestEntry = ModelManifestEntry {
+    id: "maximum",
+    tier: ModelTier::Maximum,
+    engine: "ben2_fp32",
+    kind: ModelKind::Ben2,
+    file_name: "ben2_fp32.onnx",
+    size_bytes: 422_457_868,
+    sha256: "9a8145c1c7ab73fcb265cb5feaab16e0a8c1986265e1a301cf0edd95103b99c9",
+    sources: &[ModelSource {
+        key: "upstream-mirror",
+        url: "https://huggingface.co/Pezhgorski/BEN2-FP32-ONNX/resolve/main/onnx/model.onnx",
+    }],
+    license_weights: "Apache-2.0 / MIT",
+    data_note: "dis5k-plus-proprietary-22k",
+    source_description:
+        "BEN2 Base FP32 ONNX conversion from HuggingFace (Pezhgorski/BEN2-FP32-ONNX; upstream PramaLLC/BEN2)",
+    status: ModelStatusKind::Stable,
+    input: ModelInputSpec {
+        size: 1024,
+        mean: [0.485, 0.456, 0.406],
+        std: [0.229, 0.224, 0.225],
+        input_name: "pixel_values",
+        output_name: "alphas",
+        activation: ActivationKind::MinMax,
+    },
+    measured: MeasuredSpec {
+        hardware: "i5-10400, 6C/12T, 16 GB",
+        seconds_per_photo: 14.0,
+        peak_ram_mb: 2760,
+    },
+    profile: ProfileTags {
+        strengths: &["hair_fur", "general"],
+        weaknesses: &["slow_cpu", "high_ram", "larger_download"],
+        recommended_for: &["occasional", "hair_fur", "mixed"],
+    },
+    min_available_ram_mb: 4096,
+};
+
+static ALL_MANIFEST_ENTRIES: [&ModelManifestEntry; 3] =
+    [&MANIFEST_BALANCED, &MANIFEST_FAST, &MANIFEST_MAXIMUM];
 
 /// Returns all registered model manifest entries in stable presentation order.
 #[must_use]
@@ -219,6 +261,7 @@ pub fn manifest_entry_for_tier(tier: ModelTier) -> &'static ModelManifestEntry {
     match tier {
         ModelTier::Quality => &MANIFEST_BALANCED,
         ModelTier::Fast => &MANIFEST_FAST,
+        ModelTier::Maximum => &MANIFEST_MAXIMUM,
     }
 }
 
@@ -229,6 +272,7 @@ pub fn find_manifest_entry(id_or_engine: &str) -> Option<&'static ModelManifestE
     match key.as_str() {
         "balanced" | "quality" | "birefnet_lite_512" => Some(&MANIFEST_BALANCED),
         "fast" | "u2netp" => Some(&MANIFEST_FAST),
+        "maximum" | "ben2" | "ben2_fp32" | "ben2_base" => Some(&MANIFEST_MAXIMUM),
         _ => None,
     }
 }

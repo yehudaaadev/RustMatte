@@ -7,13 +7,15 @@
   type ThemeMode = "system" | "light" | "dark";
   type RefineLevel = "none" | "light" | "standard";
   type BgMode = "transparent" | "solid";
+  type DeviceMode = "cpu" | "auto" | "directml" | "coreml";
 
   interface Props {
     open: boolean;
     t: Translations;
     lang: Lang;
     themeMode: ThemeMode;
-    selectedTier: "quality" | "fast";
+    selectedTier: "quality" | "fast" | "maximum";
+    selectedDevice: DeviceMode;
     refineLevel: RefineLevel;
     maxSide: number | null;
     backgroundMode: BgMode;
@@ -27,7 +29,8 @@
     onClose: () => void;
     onLanguageChange: (v: Lang) => void;
     onThemeChange: (v: ThemeMode) => void;
-    onTierChange: (v: "quality" | "fast") => void;
+    onTierChange: (v: "quality" | "fast" | "maximum") => void;
+    onDeviceChange: (v: DeviceMode) => void;
     onRefineChange: (v: RefineLevel) => void;
     onMaxSideChange: (v: number | null) => void;
     onBgModeChange: (v: BgMode) => void;
@@ -36,7 +39,7 @@
     onResetOutputFolder: () => void;
     onNeverUseNetworkChange: (v: boolean) => void;
     onRerunWizard: () => void;
-    onDownloadOrImportModel: (id: WizardModelId, tier: "quality" | "fast") => void;
+    onDownloadOrImportModel: (id: WizardModelId, tier: "quality" | "fast" | "maximum") => void;
     onRefreshModels: () => Promise<void>;
     onOpenAbout: () => void;
     onCopyDiagnostics: () => Promise<void>;
@@ -49,6 +52,7 @@
     lang,
     themeMode,
     selectedTier,
+    selectedDevice,
     refineLevel,
     maxSide,
     backgroundMode,
@@ -63,6 +67,7 @@
     onLanguageChange,
     onThemeChange,
     onTierChange,
+    onDeviceChange,
     onRefineChange,
     onMaxSideChange,
     onBgModeChange,
@@ -78,7 +83,7 @@
     onError,
   }: Props = $props();
 
-  let confirmDeleteTier = $state<"quality" | "fast" | null>(null);
+  let confirmDeleteTier = $state<"quality" | "fast" | "maximum" | null>(null);
   let modelNotice = $state<{ tier: string; text: string; kind: "info" | "warning" | "error" } | null>(null);
   let modelActionBusy = $state(false);
 
@@ -94,7 +99,7 @@
   }
 
   function modelTitle(m: ManifestModelInfo): string {
-    return m.id === "fast" ? t.cardFastTitle : t.cardBalancedTitle;
+    return m.id === "fast" ? t.cardFastTitle : m.id === "maximum" ? t.cardMaximumTitle : t.cardBalancedTitle;
   }
 
   async function verifyModel(m: ManifestModelInfo) {
@@ -221,10 +226,11 @@
               id="settings-active-tier"
               value={selectedTier}
               disabled={isBusy}
-              onchange={(e) => onTierChange((e.currentTarget as HTMLSelectElement).value as "quality" | "fast")}
+              onchange={(e) => onTierChange((e.currentTarget as HTMLSelectElement).value as "quality" | "fast" | "maximum")}
             >
               <option value="quality">{t.cardBalancedTitle}</option>
               <option value="fast">{t.cardFastTitle}</option>
+              <option value="maximum">{t.cardMaximumTitle}</option>
             </select>
           </div>
 
@@ -409,8 +415,18 @@
                 </select>
               </div>
               <div class="field">
-                <span class="field-label">{t.deviceLabel}</span>
-                <div class="folder-box" role="note">{t.deviceReadOnlyLine}</div>
+                <label class="field-label" for="settings-device">{t.deviceLabel}</label>
+                <select
+                  id="settings-device"
+                  value={selectedDevice}
+                  disabled={isBusy}
+                  onchange={(e) => onDeviceChange((e.currentTarget as HTMLSelectElement).value as DeviceMode)}
+                >
+                  <option value="cpu">{t.deviceCpu}</option>
+                  <option value="auto">{t.deviceAuto}</option>
+                  <option value="directml">{t.deviceDirectml}</option>
+                  <option value="coreml">{t.deviceCoreml}</option>
+                </select>
               </div>
             </div>
           </details>

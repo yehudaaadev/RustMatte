@@ -6,6 +6,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { dictionaries, type Lang } from "$lib/i18n";
+  import { SUPPORTED_IMAGE_EXTENSIONS } from "$lib/formats";
   import { mapTechnicalError, type FriendlyError } from "$lib/errors";
   import SetupWizard from "$lib/SetupWizard.svelte";
   import SettingsModal from "$lib/SettingsModal.svelte";
@@ -42,6 +43,7 @@
     startModelDownload,
     summarizeQueue,
     type FinishedPayload,
+    type ModelTierId,
     type ProgressPayload,
     type QueueItem,
   } from "$lib/queue";
@@ -73,8 +75,8 @@
   let lang = $state<Lang>("en");
   let themeMode = $state<ThemeMode>("system");
   let systemPrefersDark = $state(true);
-  let selectedTier = $state<"quality" | "fast">("quality");
-  let selectedDevice = $state("cpu");
+  let selectedTier = $state<ModelTierId>("quality");
+  let selectedDevice = $state<"cpu" | "auto" | "directml" | "coreml">("cpu");
   let refineLevel = $state<RefineLevel>("standard");
   let maxSide = $state<number | null>(null);
   let backgroundMode = $state<BgMode>("transparent");
@@ -93,19 +95,24 @@
   // Model & setup state
   let qualityModel = $state<ModelTierInfo | null>(null);
   let fastModel = $state<ModelTierInfo | null>(null);
+  let maximumModel = $state<ModelTierInfo | null>(null);
   let manifestModels = $state<ManifestModelInfo[]>([]);
   let showSetupWizard = $state(false);
   let wizardInitialStep = $state<WizardStep>(1);
   let wizardInitialModelId = $state<WizardModelId | null>(null);
   let showSettingsModal = $state(false);
-  let retryingModelTier = $state<"quality" | "fast" | null>(null);
+  let retryingModelTier = $state<ModelTierId | null>(null);
   let compareModelsSideBySide = $state(false);
   let furSuggestionDismissed = $state(false);
   let downloadError = $state<FriendlyError | null>(null);
   let downloadPaused = $state(false);
 
   let activeModelInfo = $derived(
-    selectedTier === "fast" ? fastModel : qualityModel
+    selectedTier === "fast"
+      ? fastModel
+      : selectedTier === "maximum"
+      ? maximumModel
+      : qualityModel
   );
   let isActiveModelReady = $derived(activeModelInfo?.cached ?? false);
 
@@ -196,9 +203,16 @@
           saved.theme === "light" || saved.theme === "dark"
             ? saved.theme
             : "system";
-        selectedTier = saved.tier === "fast" ? "fast" : "quality";
+        selectedTier =
+          saved.tier === "fast" || saved.tier === "maximum"
+            ? saved.tier
+            : "quality";
         selectedDevice =
-          saved.device === "auto" || !saved.device ? "cpu" : saved.device;
+          saved.device === "auto" ||
+          saved.device === "directml" ||
+          saved.device === "coreml"
+            ? saved.device
+            : "cpu";
         refineLevel =
           saved.refine_level === "none" || saved.refine_level === "light"
             ? saved.refine_level
@@ -344,6 +358,7 @@
       ]);
       qualityModel = res.quality;
       fastModel = res.fast;
+      maximumModel = res.maximum;
       manifestModels = manifestRes.models ?? [];
     } catch (e) {
       activeError = mapTechnicalError(String(e), t);
@@ -375,7 +390,7 @@
       filters: [
         {
           name: t.filterSupportedImages,
-          extensions: ["jpg", "jpeg", "png", "webp", "bmp"],
+          extensions: [...SUPPORTED_IMAGE_EXTENSIONS],
         },
       ],
     });
@@ -408,7 +423,7 @@
     }
   }
 
-  async function openModelSetup(_tier: "quality" | "fast") {
+  async function openModelSetup(_tier: ModelTierId) {
     downloadError = null;
     downloadPaused = false;
     wizardInitialStep = 1;
@@ -417,7 +432,7 @@
     showSetupWizard = true;
   }
 
-  async function openWizardForDownload(id: WizardModelId, _tier: "quality" | "fast") {
+  async function openWizardForDownload(id: WizardModelId, _tier: ModelTierId) {
     downloadError = null;
     downloadPaused = false;
     wizardInitialStep = 4;
@@ -427,12 +442,24 @@
     showSetupWizard = true;
   }
 
-  async function retrySelectedWithModel(targetTier: "quality" | "fast") {
+  async function retrySelectedWithModel(targetTier: ModelTierId) {
     if (!selectedItem || isBusy || retryingModelTier) return;
     await refreshModelStatus();
-    const targetInfo = targetTier === "fast" ? fastModel : qualityModel;
+    const targetInfo =
+      targetTier === "fast"
+        ? fastModel
+        : targetTier === "maximum"
+        ? maximumModel
+        : qualityModel;
     if (!targetInfo?.cached) {
-      await openWizardForDownload(targetTier === "fast" ? "fast" : "balanced", targetTier);
+      await openWizardForDownload(
+        targetTier === "fast"
+          ? "fast"
+          : targetTier === "maximum"
+          ? "maximum"
+          : "balanced",
+        targetTier
+      );
       return;
     }
 
@@ -460,7 +487,7 @@
     }
   }
 
-  async function startDownloadFromWizard(tier: "quality" | "fast") {
+  async function startDownloadFromWizard(tier: ModelTierId) {
     if (neverUseNetwork) {
       downloadError = mapTechnicalError("Never use the network", t);
       return;
@@ -495,7 +522,7 @@
     }
   }
 
-  async function deletePartialFromWizard(tier: "quality" | "fast") {
+  async function deletePartialFromWizard(tier: ModelTierId) {
     try {
       await invoke("delete_partial_model_download", { tier });
       downloadPaused = false;
@@ -505,7 +532,7 @@
     }
   }
 
-  async function importLocalModelFile(tier: "quality" | "fast") {
+  async function importLocalModelFile(tier: ModelTierId) {
     const selected = await open({
       title: t.dialogImportModelTitle,
       multiple: false,
@@ -530,7 +557,7 @@
     }
   }
 
-  async function completeSetupWizard(chosenTier: "quality" | "fast") {
+  async function completeSetupWizard(chosenTier: ModelTierId) {
     selectedTier = chosenTier;
     wizardCompleted = true;
     wizardVersion = 1;
@@ -742,7 +769,11 @@
 
   function formatProcessedModel(item: QueueItem): string {
     const tierText =
-      item.processedTier === "fast" ? t.tierFastName : t.tierQualityName;
+      item.processedTier === "fast"
+        ? t.tierFastName
+        : item.processedTier === "maximum"
+        ? t.tierMaximumName
+        : t.tierQualityName;
     const refineText =
       item.processedRefine === "none"
         ? t.refineNone
@@ -1244,7 +1275,14 @@
                 onclick={() => retrySelectedWithModel(altTier)}
               >
                 {retryingModelTier
-                  ? t.retryRunningLabel.replace("{model}", retryingModelTier === "fast" ? t.cardFastTitle : t.cardBalancedTitle)
+                  ? t.retryRunningLabel.replace(
+                      "{model}",
+                      retryingModelTier === "fast"
+                        ? t.cardFastTitle
+                        : retryingModelTier === "maximum"
+                        ? t.cardMaximumTitle
+                        : t.cardBalancedTitle
+                    )
                   : t.retryWithModelBtn.replace("{model}", altModelName)}
               </button>
 
@@ -1384,7 +1422,11 @@
             <div>
               <span class="field-label">{t.settingsActiveModelLabel}</span>
               <strong class="active-model-name">
-                {selectedTier === "fast" ? t.cardFastTitle : t.cardBalancedTitle}
+                {selectedTier === "fast"
+                  ? t.cardFastTitle
+                  : selectedTier === "maximum"
+                  ? t.cardMaximumTitle
+                  : t.cardBalancedTitle}
               </strong>
             </div>
             <button
@@ -1397,7 +1439,11 @@
             </button>
           </div>
           <p class="field-help">
-            {selectedTier === "quality" ? t.tierQualityDesc : t.tierFastDesc}
+            {selectedTier === "quality"
+              ? t.tierQualityDesc
+              : selectedTier === "maximum"
+              ? t.tierMaximumDesc
+              : t.tierFastDesc}
           </p>
         </div>
 
@@ -1467,7 +1513,17 @@
             </div>
 
             <div class="field">
-              <div class="folder-box" role="note">{t.deviceReadOnlyLine}</div>
+              <label for="main-device">{t.deviceLabel}</label>
+              <select
+                id="main-device"
+                bind:value={selectedDevice}
+                disabled={isBusy}
+              >
+                <option value="cpu">{t.deviceCpu}</option>
+                <option value="auto">{t.deviceAuto}</option>
+                <option value="directml">{t.deviceDirectml}</option>
+                <option value="coreml">{t.deviceCoreml}</option>
+              </select>
             </div>
           </div>
         </details>
@@ -1537,6 +1593,7 @@
     {lang}
     {themeMode}
     {selectedTier}
+    {selectedDevice}
     {refineLevel}
     {maxSide}
     {backgroundMode}
@@ -1551,6 +1608,7 @@
     onLanguageChange={(v) => (lang = v)}
     onThemeChange={(v) => (themeMode = v)}
     onTierChange={(v) => (selectedTier = v)}
+    onDeviceChange={(v) => (selectedDevice = v)}
     onRefineChange={(v) => (refineLevel = v)}
     onMaxSideChange={(v) => (maxSide = v)}
     onBgModeChange={(v) => (backgroundMode = v)}

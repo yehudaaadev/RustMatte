@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-const SUPPORTED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
+const SUPPORTED_EXTENSIONS: &[&str] = rustmatte_core::decode::SUPPORTED_EXTENSIONS;
 
 /// Strips Windows extended-length verbatim prefixes (`\\?\C:\...`, `\\?\UNC\...`) for UI display only.
 /// Leaves internal canonical paths untouched for validation and filesystem calls.
@@ -67,7 +67,7 @@ pub fn validate_input_path(raw: &str) -> Result<PathBuf, String> {
 
     if !is_supported_image_extension(&canonical) {
         return Err(format!(
-            "Unsupported image format for '{}'. Supported: jpg, jpeg, png, webp, bmp",
+            "Unsupported image format for '{}'. Supported: jpg, jpeg, png, webp, bmp, cr2, nef, arw, dng, heic, heif",
             canonical
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -155,7 +155,7 @@ pub fn expand_input_paths(raw_paths: &[String]) -> ExpandedInputs {
                 path: canonical.to_string_lossy().to_string(),
                 name,
                 reason_code: "unsupported_format".to_string(),
-                reason: "Unsupported image format (supported: JPG, JPEG, PNG, WebP, BMP)"
+                reason: "Unsupported image format (supported: JPG, JPEG, PNG, WebP, BMP, CR2, NEF, ARW, DNG, HEIC, HEIF)"
                     .to_string(),
             });
             continue;
@@ -372,12 +372,18 @@ mod tests {
         let dir = make_temp_dir("ext");
         let txt = dir.join("notes.txt");
         let jpg = dir.join("photo.JPG");
+        let cr2 = dir.join("raw.CR2");
+        let heic = dir.join("apple.heic");
         std::fs::write(&txt, b"hello").unwrap();
         std::fs::write(&jpg, b"fakejpg").unwrap();
+        std::fs::write(&cr2, b"fakecr2").unwrap();
+        std::fs::write(&heic, b"fakeheic").unwrap();
 
         assert!(validate_input_path(dir.to_str().unwrap()).is_err());
         assert!(validate_input_path(txt.to_str().unwrap()).is_err());
         assert!(validate_input_path(jpg.to_str().unwrap()).is_ok());
+        assert!(validate_input_path(cr2.to_str().unwrap()).is_ok());
+        assert!(validate_input_path(heic.to_str().unwrap()).is_ok());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

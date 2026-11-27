@@ -142,8 +142,10 @@ Rule: Only the owner approves moving to the next phase. Never mark a phase done 
 ## Backlog (v1.1, v1.x, v2.0, v3.0)
 
 ### v1.1 Scope
-- [ ] Camera RAW format support (.CR2, .NEF, .ARW, .DNG): Phase 1 extracts embedded JPEG preview; Phase 2 implements full RAW demosaic.
-- [ ] Apple HEIC/HEIF decoding support with cross-platform build validation.
+- [x] Camera RAW format support (.CR2, .NEF, .ARW, .DNG): Phase 1 embedded JPEG preview implemented (`crates/core/src/raw.rs`) and verified on sample input (Phase 2 full RAW demosaic remains backlog).
+- [x] Apple HEIC/HEIF decoding support (`heic-rs = "=0.1.5"`) implemented (`crates/core/src/decode.rs`) and verified on sample input; cross-platform CI build validation pending push/tag.
+- [x] GPU acceleration (`DirectML` on Windows, `CoreML` on macOS) with automatic CPU fallback and UI device selector (`cpu`, `auto`, `directml`, `coreml`); Windows DirectML verified on CLI release, CoreML macOS pending CI/macOS run.
+- [x] Model AI ke-3 `Maximum` (`BEN2 Base FP32`): implemented across core/manifest/CLI/UI, downloaded & verified on CPU/DirectML, quality gate (`fmt`, `clippy`, `test`, `cargo deny`) passed, and side-by-side review vs `Balanced` approved by owner.
 
 ### v1.x Scope
 - [ ] Crop-to-subject export option in desktop UI.
